@@ -67,27 +67,38 @@ ENGINEERING:
 - Must work opened directly as a local .html file — no build step, no network dependency beyond Google Fonts.
 - Complete and unabridged: never write "etc.", "more here" or skeletons. Finish every chapter and close every tag.`
 
-export function designPrompt(opts: { html: string; title: string; rejected?: string }): string {
-  return `You are a world-class art director and front-end designer. Below is a finished, fully working masterclass page written by an engineer: the content and the code are final. Make it look breathtaking: the most beautiful, immersive, premium course page the reader has ever seen. Think award-winning editorial site crossed with a cinematic interactive experience: confident typography, dramatic hierarchy, rich layered depth, tasteful glow and texture, elegant hover and focus states, refined spacing, beautiful pull quotes, callouts, cards, quizzes, flip cards, accordions and diagrams, and a signature hero visual unique to the subject.
+export function designPrompt(opts: { skeleton: string; title: string; rejected?: string }): string {
+  return `You are a world-class art director and front-end designer. Below is the STRUCTURE of a finished, working masterclass page (long text is elided with "…", but all tags, classes, ids, the writer's CSS and the page's scripts are complete). The content and code are final and you will not touch them. Your job is to write the visual design layer that makes this the most beautiful, immersive, premium course page the reader has ever seen: award-winning editorial site crossed with a cinematic interactive experience. Confident typography, dramatic hierarchy, rich layered depth, tasteful glow and texture, elegant hover and focus states, refined spacing, beautiful pull quotes, callouts, cards, quizzes, flip cards, accordions, tabs and diagrams, and a signature hero visual unique to the subject.
 
 ${DESIGN_BRIEF}
 
-HARD CONSTRAINTS — if you break any of these the work is discarded:
-1. CONTENT IS UNTOUCHED. Keep every word, fact, quote, citation, quiz question and answer, glossary entry and chapter exactly as written. Do not summarise, shorten, reorder or rewrite. You may add purely decorative elements (SVG ornaments, dividers, canvas art, numerals) but no new teaching text.
-2. CODE STILL WORKS. Keep every <script>, and every id, data- attribute and class the scripts use. Do not rename or remove them. Every interactive feature (quizzes, flips, tabs, accordions, journal, progress, diagrams, nav highlighting) must work exactly as before, and the existing localStorage keys must not change.
-3. You are mainly rewriting CSS and the presentational markup around the content. Replace the plain system fonts with exactly two Google Fonts chosen for this subject. You may add wrapper elements and classes, and extra CSS/JS for animation.
-4. No external scripts, no images by URL, no network calls (no fetch, XMLHttpRequest, WebSocket, sendBeacon), anywhere, including in prose.
-5. Motion: html.no-motion * { animation: none !important; transition: none !important; } must exist, and every requestAnimationFrame/setInterval loop you add must check document.documentElement.classList.contains('no-motion') and stop or draw a static frame, with a MutationObserver to resume. Also respect prefers-reduced-motion.
-6. THE FOUNDRY INJECTS THESE AUTOMATICALLY — DO NOT BUILD THEM: the animated black background field, the cinematic title opening, scroll-reveal fades, the Motion switch.
-7. Fully responsive, no horizontal scroll, touch targets 44px or more, visible focus states.
-8. Output the COMPLETE document: <!DOCTYPE html> to </html>, no markdown fences, no commentary. Never truncate, never write "etc." or "unchanged".
+HOW YOUR WORK IS APPLIED:
+- You do NOT output a page. You output three blocks (format below). Your CSS is inserted in a <style> placed AFTER the writer's CSS, so it overrides it. The writer's CSS stays as the functional base (it contains the rules that make tabs, accordions, flip cards, quizzes and progress bars work), so do not break state rules: study the CSS and scripts to see which classes JS toggles (e.g. .open, .active, .flipped, .correct, .wrong, [hidden]) and make sure your design styles BOTH states properly. Override layout, colour, type, spacing, borders, shadows, animation freely.
+- Your optional JS runs after the page's own scripts. Use it ONLY for decorative additions: e.g. a canvas or SVG signature hero animation inserted into the hero element, animated ornaments, cursor-reactive effects. Never touch the page's content, quiz logic or storage.
+- Style every component you see in the structure; leave nothing looking default. Give the hero a signature animated visual specific to this subject.
 
-${opts.rejected ? `YOUR PREVIOUS ATTEMPT WAS REJECTED AND DISCARDED: ${opts.rejected}. Fix exactly this: output the COMPLETE page this time, keep all content, ids and scripts.\n\n` : ''}PAGE TITLE: ${opts.title}
+HARD CONSTRAINTS:
+1. Never hide, remove or shrink content: no display:none / visibility:hidden / opacity:0 on content except for the page's own toggled states.
+2. Fonts: exactly two Google Fonts, loaded with <link> tags in the FONTS block (fonts.googleapis.com / fonts.gstatic.com only). No other external resources, no images by URL, no @import of other hosts.
+3. No network calls (no fetch, XMLHttpRequest, WebSocket, sendBeacon) anywhere, including comments.
+4. Motion: include html.no-motion * { animation: none !important; transition: none !important; }. Every requestAnimationFrame/setInterval loop you write must check document.documentElement.classList.contains('no-motion') and draw a static frame when true, and a MutationObserver must resume it when the class is removed. Respect prefers-reduced-motion.
+5. THE FOUNDRY INJECTS THESE AUTOMATICALLY — DO NOT BUILD THEM: the animated black background field, the cinematic title opening, scroll-reveal fades, the Motion switch.
+6. Fully responsive, no horizontal scroll, touch targets 44px or more, visible focus states.
+7. Be generous and thorough: a rich, detailed stylesheet (hundreds of lines is normal), not a token gesture.
 
-THE PAGE TO RESTYLE:
-${opts.html}
+OUTPUT FORMAT — exactly this, nothing before or after:
+<<<FONTS>>>
+<link ...> tags
+<<<CSS>>>
+...the complete stylesheet, no <style> tags...
+<<<JS>>>
+...optional decorative script, no <script> tags (leave empty if none)...
+<<<END>>>
 
-Output the complete restyled HTML document and nothing else.`
+${opts.rejected ? `YOUR PREVIOUS ATTEMPT WAS REJECTED AND DISCARDED: ${opts.rejected}. Fix exactly this.\n\n` : ''}PAGE TITLE: ${opts.title}
+
+PAGE STRUCTURE:
+${opts.skeleton}`
 }
 
 export function coursePrompt(opts: {
