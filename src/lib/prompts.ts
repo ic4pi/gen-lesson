@@ -27,29 +27,32 @@ const OUTPUT_CONTRACT = `OUTPUT CONTRACT — follow exactly:
 3. ALL CSS lives in a single <style> block in <head>. ALL JS lives in a single <script> block before </body>. No external scripts or stylesheets except Google Fonts. Never hotlink images — use inline SVG, CSS art, gradients, or canvas for all visuals.
 4. The page must never make network requests: no fetch, XMLHttpRequest, WebSocket or sendBeacon anywhere in the JS, and never write those words in prose either.`
 
-const DESIGN_SPEC = `DESIGN DIRECTION:
-- Derive the ENTIRE visual theme from the subject itself: palette, typography pairing, and one signature visual motif must feel native to this topic. A course on ceremonial magic must not look like a course on thermodynamics. Commit to the theme fully.
-- Quality bar: award-winning editorial course platform. Credible, premium, trustworthy — the kind of page a paying student screenshots.
-- Typography: load exactly two Google Fonts (one display, one body). Real hierarchy, generous whitespace, body text 17px+ with relaxed line-height.
-- Choose dark or light theme based on what suits the subject — commit to it.
+const DESIGN_SPEC = `QUALITY BAR — read this twice:
+This is for a private mystery-school library. The pages must look and feel like a premium, hand-crafted immersive course — the level of a high-end editorial site crossed with an interactive experience. Think: a hero with a signature animated visual that is unique to the topic (a self-drawing sigil, a particle horizon that bends toward the cursor, drifting glyphs), a sticky chapter navigation, scroll progress, pull quotes with attribution, narrative story blocks, interactive exercises with a saved private journal, deep-dive drawers, hover-definition terms, a real glossary, and honest labelling of what is established versus speculative. Generic, template-looking, flat or text-wall pages are unacceptable. Exceed that bar on every page.
+
+BACKGROUND AND COLOUR (hard rules):
+- The page background is PURE BLACK (#000) or an almost-black neutral (#05050a at the lightest). NEVER a purple, violet, indigo, navy or any tinted page background, and never a gradient across the whole page. Page wrappers (body, main, .page, .app, .shell) must use background: transparent — the Foundry draws an animated black field behind them.
+- Cards, panels, sidebars and drawers are translucent near-black (e.g. rgba(8,8,12,.72)) with a hairline border — never a saturated or purple fill.
+- Colour comes only from accents: derive a 2–3 colour accent palette from the subject itself (e.g. antique gold + oxblood, teal + amber, bone + crimson). Purple/violet may appear ONLY as a small accent if the subject truly calls for it — never as a surface.
+- Typography: load exactly two Google Fonts (a distinctive display face and a readable body face) chosen to suit the subject. Real hierarchy, generous whitespace, body text 17px+ with relaxed line-height, max reading width ~70ch.
 
 REQUIRED STRUCTURE:
-1. A fixed scroll progress bar at the very top that fills as the reader advances.
-2. A hero: course title, part designation if any, estimated reading time, and "what you'll walk away with" (3-4 concrete outcomes).
-3. Sticky chapter navigation — sidebar on desktop, collapsible top bar on mobile — with active-section highlighting via IntersectionObserver.
-4. 6–9 chapters of SUBSTANTIVE teaching content. Real depth: mechanisms, history, named examples, specific numbers and dates where they exist. Zero filler, zero fluff, zero placeholder text — every paragraph must teach something concrete.
-5. Interactive elements — use at least 4 different kinds across the course: click-to-reveal explanations, accordion deep-dives, self-check quizzes with instant right/wrong feedback, flip cards for key terms, tabbed comparisons, reflection prompts saved to localStorage.
-6. A "Key Takeaways" section distilling the whole course.
-7. A glossary of key terms with plain-language definitions.
+1. A fixed scroll-progress bar at the very top.
+2. A hero: course title, part designation if any, estimated reading time, a one-paragraph promise, and 3–4 concrete outcomes ("what you will walk away with") — with the signature animated visual described below.
+3. Sticky chapter navigation (side rail or sidebar on desktop, collapsible on mobile) with active-section highlighting via IntersectionObserver.
+4. 6–9 chapters of SUBSTANTIVE teaching content — each at least 450 words, the whole course at least 4500 words. Real depth: mechanisms, history, named people, texts, traditions, dates and specifics where they exist; the strongest counter-view or limitation stated honestly. Zero filler, zero placeholder text; every paragraph teaches something concrete. Where material is historically established versus modern reconstruction versus personal gnosis/speculation, say which.
+5. Interactivity — at least SIX different kinds, all genuinely working: (a) at least TWO custom topic-specific interactive diagrams or simulations built with canvas or SVG that respond to pointer, slider or click (a correspondences wheel you can rotate, a Tree-of-Life you can hover, a planetary-hours calculator, a sigil-forging canvas, a timeline scrubber — whatever fits the subject); (b) self-check quizzes with instant right/wrong feedback and explanation; (c) flip cards or click-to-reveal for key concepts; (d) tabbed or toggled comparisons; (e) a reflection journal: textareas whose entries save to localStorage with Save / Clear and a visible history; (f) a persistent checklist/progress tracker that updates the progress bar; (g) accordion deep-dive drawers; (h) hover-definition terms for jargon.
+6. A "Key Takeaways" section distilling the course, and a glossary of key terms with plain-language definitions.
 
-MOTION:
-- Scroll-triggered reveals via IntersectionObserver, refined hover micro-interactions, and one tasteful ambient motion detail tied to the theme (floating particles, slow glow, drifting glyphs — whatever fits the subject).
-- A pill-style toggle switch fixed at the top-right, labeled "Motion", that instantly turns ALL animations and transitions on or off by toggling a class on <html> (e.g. .no-motion * { animation: none !important; transition: none !important; }). Default ON. Persist the choice in localStorage.
-- Respect prefers-reduced-motion.
+MOTION (the course must feel alive, never static):
+- Build the signature hero animation yourself in canvas or SVG (self-drawing line work, orbiting or drifting particles, rotating geometry, a living diagram) — richly detailed, topic-specific, reacting to the pointer where natural. Add refined hover micro-interactions on cards, buttons, terms and nav; animate chapter-number or heading flourishes; animate diagrams as they scroll into view.
+- THE FOUNDRY INJECTS THESE AUTOMATICALLY — DO NOT BUILD THEM: the animated black background field, the cinematic title opening, scroll-reveal fades, and the "Motion" on/off switch. Do not add a loading overlay, a motion toggle, or a full-page background of your own.
+- The Foundry's Motion switch toggles the class "no-motion" on <html>. Everything you animate must obey it: write CSS as html.no-motion * { animation: none !important; transition: none !important; }, and make EVERY requestAnimationFrame / setInterval loop check document.documentElement.classList.contains('no-motion') each frame (draw one static frame instead when off), and watch for the class changing with a MutationObserver so loops resume when turned back on. Also respect prefers-reduced-motion.
 
 ENGINEERING:
-- Fully mobile responsive, no horizontal scroll, touch targets ≥ 44px.
-- Must work opened directly as a local .html file — no build step, no network dependency beyond Google Fonts.`
+- Fully mobile responsive, no horizontal scroll, touch targets ≥ 44px, keyboard-accessible controls with visible focus.
+- Must work opened directly as a local .html file — no build step, no network dependency beyond Google Fonts.
+- Complete and unabridged: never write "etc.", "more here" or skeletons. Finish every chapter and close every tag.`
 
 export function coursePrompt(opts: {
   topic: string

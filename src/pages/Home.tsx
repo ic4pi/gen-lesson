@@ -12,6 +12,7 @@ import TopicQueue from '@/sections/TopicQueue'
 import { DEFAULT_MODELS, PROVIDERS } from '@/lib/models'
 import { chatOnce, streamChat } from '@/lib/llm'
 import { parseContents } from '@/lib/parseContents'
+import { enhanceCourseHtml, hasFx } from '@/lib/fx'
 import {
   CURRICULUM_SYSTEM,
   coursePrompt,
@@ -180,7 +181,24 @@ export default function Home() {
     ;(async () => {
       try {
         const [c, s] = await Promise.all([db.allCourses(), db.allSeries()])
-        setCourses(c)
+        // one-time upgrade: courses made before the black/animated layer existed
+        const upgraded: Course[] = []
+        const fixed = c.map((x) => {
+          if (hasFx(x.html)) return x
+          const ser = s.find((y) => y.id === x.seriesId)
+          const u = {
+            ...x,
+            html: enhanceCourseHtml(x.html, {
+              title: x.title,
+              kicker: ser && x.part ? `Part ${x.part} of ${ser.plan.length} · ${ser.title}` : undefined,
+            }),
+          }
+          upgraded.push(u)
+          return u
+        })
+        for (const u of upgraded) await db.putCourse(u)
+        if (upgraded.length) toast.success(`Upgraded ${upgraded.length} existing course${upgraded.length > 1 ? 's' : ''} — black theme, animation and Motion switch added`)
+        setCourses(fixed)
         setSeriesList(s)
       } catch {
         toast.error('Could not open the local library database')
@@ -313,16 +331,21 @@ export default function Home() {
         toast.warning('The document looks cut off mid-stream — regenerate with a higher-context model if sections are missing.')
 
       const fallbackTitle = series ? `${series.title} — Part ${part}` : t
+      const finalTitle = parsed.title ?? fallbackTitle
+      const html = enhanceCourseHtml(parsed.html, {
+        title: finalTitle,
+        kicker: series && part ? `Part ${part} of ${series.plan.length} · ${series.title}` : undefined,
+      })
       const course: Course = {
         id: uid(),
         seriesId: series?.id ?? null,
         part,
-        title: parsed.title ?? fallbackTitle,
+        title: finalTitle,
         topic: effTopic,
         notes: effNotes,
         modelId: model.id,
         provider: model.provider,
-        html: parsed.html,
+        html,
         summary: parsed.summary,
         topicsCovered: parsed.topicsCovered,
         createdAt: Date.now(),
