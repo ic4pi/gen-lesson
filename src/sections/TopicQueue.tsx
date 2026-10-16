@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { ArrowDown, ArrowUp, Layers, FileText, Lightbulb, ListPlus, Play, RotateCcw, Square, X } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { ArrowDown, ArrowUp, Layers, FileText, Lightbulb, ListPlus, Play, RotateCcw, Square, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -52,6 +52,7 @@ function ModeSelect({ value, onChange }: { value: QueueMode; onChange: (v: Queue
 export default function TopicQueue(p: Props) {
   const [paste, setPaste] = useState('')
   const [mode, setMode] = useState<QueueMode>('series')
+  const fileRef = useRef<HTMLInputElement>(null)
   const checked = p.suggestions.filter((s) => s.checked)
   const toggle = (id: string, v: boolean) =>
     p.setSuggestions(p.suggestions.map((s) => (s.id === id ? { ...s, checked: v } : s)))
@@ -117,6 +118,20 @@ export default function TopicQueue(p: Props) {
               placeholder={'One topic per line. Headings, bullets and numbering are cleaned up:\n\n# Hermetic Arts\n1. The Kybalion — the seven principles\n2. Hermetic Qabalah\n\nTAROT\n- The Major Arcana'}
               className={`${inputCls} resize-y font-mono2 text-xs`}
             />
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".txt,.md,.csv,.json,text/*,application/json"
+              className="hidden"
+              onChange={async (e) => {
+                const f = e.target.files?.[0]
+                if (f) setPaste(await f.text())
+                e.target.value = ''
+              }}
+            />
+            <Button variant="outline" className="w-full" onClick={() => fileRef.current?.click()}>
+              <Upload className="mr-2 h-4 w-4" /> Load a file (.txt .md .csv .json)
+            </Button>
             <ModeSelect value={mode} onChange={setMode} />
             <Button
               className="w-full"
@@ -138,7 +153,7 @@ export default function TopicQueue(p: Props) {
               </div>
               <div className="w-20 space-y-1.5">
                 <Label htmlFor="count" className="label-mono">How many</Label>
-                <Input id="count" type="number" min={1} max={30} value={p.count} onChange={(e) => p.setCount(Math.max(1, Math.min(30, Number(e.target.value) || 1)))} className={inputCls} disabled={p.suggesting} />
+                <Input id="count" type="number" min={1} max={80} value={p.count} onChange={(e) => p.setCount(Math.max(1, Math.min(80, Number(e.target.value) || 1)))} className={inputCls} disabled={p.suggesting} />
               </div>
             </div>
             <Button variant="outline" className="w-full" onClick={p.onSuggest} disabled={p.suggesting || p.busy || !p.subject.trim()}>

@@ -3,7 +3,7 @@
 import { streamChat } from './llm'
 import { designPrompt } from './prompts'
 import { visibleWords } from './hexpo'
-import type { ModelOption } from '@/types'
+import type { ModelOption, VisualDirection } from '@/types'
 
 const ids = (html: string) => new Set([...html.matchAll(/\sid=["']([^"']+)["']/g)].map((m) => m[1]))
 
@@ -86,6 +86,7 @@ export async function designCourse(opts: {
   onProgress?: (chars: number) => void
   signal?: AbortSignal
   rejected?: string
+  visual?: VisualDirection | null
 }): Promise<{ ok: true; html: string } | { ok: false; reason: string }> {
   let acc = ''
   for await (const d of streamChat({
@@ -93,7 +94,7 @@ export async function designCourse(opts: {
     apiKey: opts.apiKey,
     model: opts.designer.id,
     messages: [
-      { role: 'user', content: designPrompt({ skeleton: skeletonOf(opts.rawHtml), title: opts.title, rejected: opts.rejected }) },
+      { role: 'user', content: designPrompt({ skeleton: skeletonOf(opts.rawHtml), title: opts.title, rejected: opts.rejected, visual: opts.visual }) },
     ],
     maxTokens: 32000,
     temperature: 0.9,

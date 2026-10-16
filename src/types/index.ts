@@ -17,6 +17,19 @@ export interface PlanPart {
   scope: string
 }
 
+export interface VisualDirection {
+  mood: string
+  palette: { name: string; hex: string; role: string }[]
+  fonts: { display: string; body: string }
+  motif: string
+  hero: string
+  visualizations: { name: string; shows: string; interaction: string; tech: 'canvas' | 'svg' }[]
+  effects: string[]
+  animations: string[]
+  components: string
+  avoid: string[]
+}
+
 export interface Series {
   id: string
   title: string
@@ -24,6 +37,8 @@ export interface Series {
   notes: string
   plan: PlanPart[]
   createdAt: number
+  /** one look for the whole series */
+  design?: VisualDirection
 }
 
 export interface Course {
@@ -42,6 +57,7 @@ export interface Course {
   review?: ReviewResult
   /** writer's functional version, before the designer pass and Foundry fx */
   rawHtml?: string
+  visual?: VisualDirection
   designedBy?: string
   published?: { id: string; file: string; at: number; commit: string }
 }

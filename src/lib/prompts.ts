@@ -1,6 +1,7 @@
 // Prompt engine — the heart of the Foundry.
 // Series continuity, the output contract, and the design spec all live here.
-import type { Course, PlanPart, Series } from '@/types'
+import type { Course, PlanPart, Series, VisualDirection } from '@/types'
+import { visualText } from '@/lib/brief'
 
 export const CURRICULUM_SYSTEM = `You are a curriculum architect for a masterclass generation studio. You output ONLY valid JSON — no markdown fences, no commentary.`
 
@@ -67,11 +68,12 @@ ENGINEERING:
 - Must work opened directly as a local .html file — no build step, no network dependency beyond Google Fonts.
 - Complete and unabridged: never write "etc.", "more here" or skeletons. Finish every chapter and close every tag.`
 
-export function designPrompt(opts: { skeleton: string; title: string; rejected?: string }): string {
+export function designPrompt(opts: { skeleton: string; title: string; rejected?: string; visual?: VisualDirection | null }): string {
   return `You are a world-class art director and front-end designer. Below is the STRUCTURE of a finished, working masterclass page (long text is elided with "…", but all tags, classes, ids, the writer's CSS and the page's scripts are complete). The content and code are final and you will not touch them. Your job is to write the visual design layer that makes this the most beautiful, immersive, premium course page the reader has ever seen: award-winning editorial site crossed with a cinematic interactive experience. Confident typography, dramatic hierarchy, rich layered depth, tasteful glow and texture, elegant hover and focus states, refined spacing, beautiful pull quotes, callouts, cards, quizzes, flip cards, accordions, tabs and diagrams, and a signature hero visual unique to the subject.
 
 ${DESIGN_BRIEF}
 
+${opts.visual ? `ART DIRECTION FROM THE CREATIVE DIRECTOR — execute this with total commitment; it overrides your own defaults where they differ (palette stays accent-only on pure black):\n${visualText(opts.visual)}\n` : ''}
 HOW YOUR WORK IS APPLIED:
 - You do NOT output a page. You output three blocks (format below). Your CSS is inserted in a <style> placed AFTER the writer's CSS, so it overrides it. The writer's CSS stays as the functional base (it contains the rules that make tabs, accordions, flip cards, quizzes and progress bars work), so do not break state rules: study the CSS and scripts to see which classes JS toggles (e.g. .open, .active, .flipped, .correct, .wrong, [hidden]) and make sure your design styles BOTH states properly. Override layout, colour, type, spacing, borders, shadows, animation freely.
 - Your optional JS runs after the page's own scripts. Use it ONLY for decorative additions: e.g. a canvas or SVG signature hero animation inserted into the hero element, animated ornaments, cursor-reactive effects. Never touch the page's content, quiz logic or storage.
@@ -107,8 +109,9 @@ export function coursePrompt(opts: {
   series?: Series | null
   part?: number | null
   previousParts?: Course[]
+  visual?: VisualDirection | null
 }): string {
-  const { topic, notes, series, part, previousParts } = opts
+  const { topic, notes, series, part, previousParts, visual } = opts
 
   let seriesBlock = ''
   if (series && part) {
@@ -147,7 +150,7 @@ ${ACCURACY_SPEC}
 ${STYLING_NOTE}
 
 ${FUNCTION_SPEC}
-
+${visual && visual.visualizations.length ? `\nCUSTOM DATA VISUALIZATIONS YOU MUST BUILD (working code, plain styling; the designer will beautify them; give each a clear id and class):\n${visual.visualizations.map((x) => `- ${x.name} (${x.tech}): shows ${x.shows}; interaction: ${x.interaction}`).join('\n')}\n` : ''}
 Begin now. Output the HTML document and nothing else.`
 }
 

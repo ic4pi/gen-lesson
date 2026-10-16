@@ -6,7 +6,48 @@ export interface ParsedTopic {
 
 const SPLIT = /\s+[—–]\s+|\s+-\s+/
 
+function fromStructured(text: string): ParsedTopic[] | null {
+  const t = text.trim()
+  if (t.startsWith('[') || t.startsWith('{')) {
+    try {
+      let j = JSON.parse(t)
+      if (!Array.isArray(j)) j = j.topics ?? j.items ?? []
+      const out = (j as any[])
+        .map((x) =>
+          typeof x === 'string'
+            ? { topic: x.trim(), notes: '' }
+            : {
+                topic: String(x?.topic ?? x?.title ?? x?.name ?? '').trim(),
+                notes: String(x?.notes ?? x?.angle ?? x?.description ?? x?.desc ?? '').trim(),
+              },
+        )
+        .filter((x) => x.topic.length >= 3)
+      return out.length ? out : null
+    } catch {
+      return null
+    }
+  }
+  // CSV with a header row containing topic/title
+  const lines = t.split(/\r?\n/)
+  const head = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/^"|"$/g, ''))
+  const ti = head.findIndex((h) => ['topic', 'title', 'name'].includes(h))
+  if (ti === -1 || head.length < 2) return null
+  const ni = head.findIndex((h) => ['notes', 'angle', 'description', 'desc'].includes(h))
+  const cells = (l: string) => (l.match(/("([^"]|"")*"|[^,]*)(,|$)/g) ?? []).map((c) => c.replace(/,$/, '').replace(/^"|"$/g, '').replace(/""/g, '"').trim())
+  const out = lines
+    .slice(1)
+    .map((l) => cells(l))
+    .map((c) => ({ topic: c[ti] ?? '', notes: ni >= 0 ? (c[ni] ?? '') : '' }))
+    .filter((x) => x.topic.length >= 3)
+  return out.length ? out : null
+}
+
 export function parseContents(text: string): ParsedTopic[] {
+  const structured = fromStructured(text)
+  if (structured) {
+    const seen = new Set<string>()
+    return structured.filter((x) => !seen.has(x.topic.toLowerCase()) && !!seen.add(x.topic.toLowerCase()))
+  }
   const out: ParsedTopic[] = []
   const seen = new Set<string>()
   let section = ''

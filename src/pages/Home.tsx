@@ -14,6 +14,7 @@ import { chatOnce, streamChat } from '@/lib/llm'
 import { parseContents } from '@/lib/parseContents'
 import { enhanceCourseHtml, hasFx, stripFx } from '@/lib/fx'
 import { designCourse } from '@/lib/design'
+import { makeBrief } from '@/lib/brief'
 import {
   CURRICULUM_SYSTEM,
   rebuildPrompt,
@@ -40,6 +41,7 @@ import type {
   QueueItem,
   Series,
   Suggestion,
+  VisualDirection,
 } from '@/types'
 
 const LS_KEYS = 'mf.keys'
@@ -240,6 +242,7 @@ export default function Home() {
     raw: string,
     meta: { title: string; kicker?: string },
     signal?: AbortSignal,
+    visual?: VisualDirection | null,
   ): Promise<{ html: string; designedBy?: string }> {
     const fx = (h: string) => enhanceCourseHtml(h, meta)
     const designer = designerModels.find((m) => `${m.provider}:${m.id}` === designerRef.current)
@@ -260,6 +263,7 @@ export default function Home() {
           apiKey,
           signal,
           rejected,
+          visual,
           onProgress: (chars) => setGen((g) => ({ ...g, chars })),
         })
         if (r.ok) return { html: fx(r.html), designedBy: designer.id }
@@ -358,6 +362,40 @@ export default function Home() {
         setGen({ phase: 'writing', message: '', chars: 0, planPreview: null })
       }
 
+      // ── creative brief: the model writes its own build requirements + art direction ──
+      let visual: VisualDirection | null = series?.design ?? null
+      let briefText = ''
+      setGen((g) => ({ ...g, phase: 'planning', message: 'Writing the creative brief…' }))
+      try {
+        const b = await makeBrief({
+          model,
+          apiKey,
+          topic: effTopic,
+          notes: effNotes,
+          series,
+          part,
+          needVisual: !visual,
+          signal: abort.signal,
+        })
+        if (b) {
+          briefText = b.contentText
+          if (!visual && b.visual) {
+            visual = b.visual
+            if (series) {
+              series = { ...series, design: visual }
+              await db.putSeries(series)
+              const sid = series.id
+              const upd = series
+              setSeriesList((l) => l.map((x) => (x.id === sid ? upd : x)))
+            }
+          }
+        }
+      } catch (e: any) {
+        if (e?.name === 'AbortError') throw e
+        toast.warning(`Creative brief failed (${e?.message ?? 'error'}) — building without it`)
+      }
+      setGen((g) => ({ ...g, phase: 'writing', message: '' }))
+
       // ── write the course ──
       let acc = ''
       for await (const delta of streamChat({
@@ -369,10 +407,11 @@ export default function Home() {
             role: 'user',
             content: coursePrompt({
               topic: effTopic,
-              notes: effNotes,
+              notes: briefText ? `${effNotes}\n\nBUILD REQUIREMENTS FROM THE CREATIVE DIRECTOR (treat as mandatory):\n${briefText}` : effNotes,
               series,
               part,
               previousParts,
+              visual,
             }),
           },
         ],
@@ -401,6 +440,7 @@ export default function Home() {
           kicker: series && part ? `Part ${part} of ${series.plan.length} · ${series.title}` : undefined,
         },
         abort.signal,
+        visual,
       )
       const html = finished.html
       const course: Course = {
@@ -414,6 +454,7 @@ export default function Home() {
         provider: model.provider,
         html,
         rawHtml: parsed.html,
+        visual: visual ?? undefined,
         designedBy: finished.designedBy,
         summary: parsed.summary,
         topicsCovered: parsed.topicsCovered,
@@ -468,7 +509,7 @@ export default function Home() {
           { role: 'system', content: TOPIC_SYSTEM },
           { role: 'user', content: topicSuggestPrompt(subject.trim(), count, [...known, ...pending].slice(0, 300)) },
         ],
-        maxTokens: 4096,
+        maxTokens: 8192,
         temperature: 0.9,
       })
       const all = parseSuggestions(raw)
@@ -751,7 +792,7 @@ export default function Home() {
     }
     if (best !== cur) await saveCourse(best) // a later rebuild scored worse — restore the best one
     if (best.rawHtml && !best.designedBy && best.review!.passed && designerRef.current !== 'none') {
-      const fin = await finishHtml(best.rawHtml, fxMeta(best))
+      const fin = await finishHtml(best.rawHtml, fxMeta(best), undefined, best.visual)
       if (fin.designedBy) {
         // content was verified unchanged by the designer check, so the review still applies
         best = { ...best, html: fin.html, designedBy: fin.designedBy, review: { ...best.review!, htmlLength: fin.html.length } }
@@ -771,7 +812,7 @@ export default function Home() {
     if (!current) return
     if (designerRef.current === 'none') throw new Error('Pick a designer model first')
     const raw = current.rawHtml ?? stripFx(current.html)
-    const fin = await finishHtml(raw, fxMeta(current))
+    const fin = await finishHtml(raw, fxMeta(current), undefined, current.visual)
     setGen(IDLE)
     if (!fin.designedBy) return
     const next: Course = {
