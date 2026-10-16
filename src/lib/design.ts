@@ -42,13 +42,14 @@ export async function designCourse(opts: {
   apiKey: string
   onProgress?: (chars: number) => void
   signal?: AbortSignal
+  rejected?: string
 }): Promise<{ ok: true; html: string } | { ok: false; reason: string }> {
   let acc = ''
   for await (const d of streamChat({
     provider: opts.designer.provider,
     apiKey: opts.apiKey,
     model: opts.designer.id,
-    messages: [{ role: 'user', content: designPrompt({ html: opts.rawHtml, title: opts.title }) }],
+    messages: [{ role: 'user', content: designPrompt({ html: opts.rawHtml, title: opts.title, rejected: opts.rejected }) }],
     maxTokens: 32000,
     temperature: 0.8,
     signal: opts.signal,

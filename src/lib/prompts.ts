@@ -67,7 +67,7 @@ ENGINEERING:
 - Must work opened directly as a local .html file — no build step, no network dependency beyond Google Fonts.
 - Complete and unabridged: never write "etc.", "more here" or skeletons. Finish every chapter and close every tag.`
 
-export function designPrompt(opts: { html: string; title: string }): string {
+export function designPrompt(opts: { html: string; title: string; rejected?: string }): string {
   return `You are a world-class art director and front-end designer. Below is a finished, fully working masterclass page written by an engineer: the content and the code are final. Make it look breathtaking: the most beautiful, immersive, premium course page the reader has ever seen. Think award-winning editorial site crossed with a cinematic interactive experience: confident typography, dramatic hierarchy, rich layered depth, tasteful glow and texture, elegant hover and focus states, refined spacing, beautiful pull quotes, callouts, cards, quizzes, flip cards, accordions and diagrams, and a signature hero visual unique to the subject.
 
 ${DESIGN_BRIEF}
@@ -82,7 +82,7 @@ HARD CONSTRAINTS — if you break any of these the work is discarded:
 7. Fully responsive, no horizontal scroll, touch targets 44px or more, visible focus states.
 8. Output the COMPLETE document: <!DOCTYPE html> to </html>, no markdown fences, no commentary. Never truncate, never write "etc." or "unchanged".
 
-PAGE TITLE: ${opts.title}
+${opts.rejected ? `YOUR PREVIOUS ATTEMPT WAS REJECTED AND DISCARDED: ${opts.rejected}. Fix exactly this: output the COMPLETE page this time, keep all content, ids and scripts.\n\n` : ''}PAGE TITLE: ${opts.title}
 
 THE PAGE TO RESTYLE:
 ${opts.html}

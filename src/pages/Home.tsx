@@ -144,7 +144,7 @@ export default function Home() {
   const queueRef = useRef<QueueItem[]>(queue)
   const lastErrorRef = useRef('')
   const [designerId, setDesignerId] = useState(
-    () => localStorage.getItem(LS_DESIGNER) ?? 'openrouter:anthropic/claude-sonnet-4.5',
+    () => localStorage.getItem(LS_DESIGNER) ?? 'openrouter:anthropic/claude-opus-4.1',
   )
   useEffect(() => {
     localStorage.setItem(LS_DESIGNER, designerId)
@@ -251,16 +251,22 @@ export default function Home() {
     }
     setGen((g) => ({ ...g, phase: 'designing', chars: 0, message: `${designer.label} is styling the page…` }))
     try {
-      const r = await designCourse({
-        rawHtml: raw,
-        title: meta.title,
-        designer,
-        apiKey,
-        signal,
-        onProgress: (chars) => setGen((g) => ({ ...g, chars })),
-      })
-      if (r.ok) return { html: fx(r.html), designedBy: designer.id }
-      toast.warning(`Designer output rejected (${r.reason}) — kept the plain build. Use Restyle to retry.`)
+      let rejected: string | undefined
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        const r = await designCourse({
+          rawHtml: raw,
+          title: meta.title,
+          designer,
+          apiKey,
+          signal,
+          rejected,
+          onProgress: (chars) => setGen((g) => ({ ...g, chars })),
+        })
+        if (r.ok) return { html: fx(r.html), designedBy: designer.id }
+        rejected = r.reason
+        if (attempt === 1) toast.message(`Design rejected (${r.reason}) — retrying once`)
+        else toast.warning(`Designer output rejected twice (${r.reason}) — kept the plain build. Use Restyle to retry.`)
+      }
     } catch (e: any) {
       if (e?.name === 'AbortError') throw e
       toast.warning(`Designer failed (${e?.message ?? 'error'}) — kept the plain build.`)

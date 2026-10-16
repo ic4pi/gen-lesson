@@ -162,9 +162,6 @@ export default function Composer(p: Props) {
             <SelectValue placeholder="Choose a designer" />
           </SelectTrigger>
           <SelectContent className="max-h-80">
-            <SelectItem value="none">
-              <span className="text-foreground">No designer — plain build</span>
-            </SelectItem>
             {DESIGN_TIER_ORDER.map((tier) =>
               designGrouped[tier]?.length ? (
                 <SelectGroup key={tier}>
