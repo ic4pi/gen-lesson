@@ -161,3 +161,50 @@ export function parseCurriculum(raw: string): {
     return null
   }
 }
+
+// ── topic suggestion ─────────────────────────────────────────
+
+export const TOPIC_SYSTEM = `You are the acquisitions librarian of a hidden mystery school. You propose course topics for its private library: specific, substantive, scholarly-yet-practical subjects. Respond with JSON only.`
+
+export function topicSuggestPrompt(subject: string, count: number, existing: string[]): string {
+  return `Subject area: ${subject}
+
+Propose ${count} distinct course topics for this library. Each must be specific enough to fill a full masterclass (e.g. "The Sevenfold Planetary Spheres in Hermetic Theurgy", not "Hermeticism"). Spread them across traditions, eras and practices; avoid near-duplicates of each other.
+
+The library ALREADY contains these — do not repeat, rephrase or overlap them:
+${existing.length ? existing.map((e) => `- ${e}`).join('\n') : '(nothing yet)'}
+
+Return ONLY a JSON array, no prose, no code fences:
+[{"topic": "short course title", "angle": "one sentence on scope and approach"}]`
+}
+
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+/** True if `candidate` equals or contains/is contained by any known title. */
+export function isDuplicateTopic(candidate: string, known: string[]): boolean {
+  const c = norm(candidate)
+  if (!c) return true
+  return known.some((k) => {
+    const n = norm(k)
+    if (!n) return false
+    return n === c || (Math.min(n.length, c.length) >= 12 && (n.includes(c) || c.includes(n)))
+  })
+}
+
+export function parseSuggestions(raw: string): { topic: string; angle: string }[] {
+  const m = raw.match(/\[[\s\S]*\]/)
+  if (!m) return []
+  try {
+    const arr = JSON.parse(m[0])
+    if (!Array.isArray(arr)) return []
+    return arr
+      .map((x: any) =>
+        typeof x === 'string'
+          ? { topic: x.trim(), angle: '' }
+          : { topic: String(x?.topic ?? '').trim(), angle: String(x?.angle ?? '').trim() },
+      )
+      .filter((x) => x.topic)
+  } catch {
+    return []
+  }
+}

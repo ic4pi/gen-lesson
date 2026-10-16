@@ -57,3 +57,16 @@ export interface GenState {
   chars: number
   planPreview: PlanPart[] | null
 }
+
+export interface Suggestion {
+  id: string
+  topic: string
+  angle: string
+  checked: boolean
+}
+
+export interface QueueItem {
+  id: string
+  topic: string
+  notes: string
+}

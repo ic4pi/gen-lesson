@@ -8,23 +8,39 @@ import Composer from '@/sections/Composer'
 import OutputPane from '@/sections/OutputPane'
 import Library from '@/sections/Library'
 import SettingsDialog from '@/sections/SettingsDialog'
+import TopicQueue from '@/sections/TopicQueue'
 import { DEFAULT_MODELS, PROVIDERS } from '@/lib/models'
 import { chatOnce, streamChat } from '@/lib/llm'
 import {
   CURRICULUM_SYSTEM,
   coursePrompt,
   curriculumPrompt,
+  TOPIC_SYSTEM,
+  topicSuggestPrompt,
+  parseSuggestions,
+  isDuplicateTopic,
   looksTruncated,
   parseCourseHtml,
   parseCurriculum,
 } from '@/lib/prompts'
 import { db, uid } from '@/lib/db'
-import type { Course, GenState, Keys, ModelOption, ProviderId, Series } from '@/types'
+import type { Course, GenState, Keys, ModelOption, ProviderId, QueueItem, Series, Suggestion } from '@/types'
 
 const LS_KEYS = 'mf.keys'
 const LS_MOTION = 'mf.motion'
 const LS_MODEL = 'mf.model'
 const LS_CUSTOM = 'mf.customModels'
+const LS_SUBJECT = 'mf.subject'
+const LS_SUGGESTIONS = 'mf.suggestions'
+const LS_QUEUE = 'mf.queue'
+
+function loadJson<T>(key: string, fallback: T): T {
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? '') as T
+  } catch {
+    return fallback
+  }
+}
 
 const IDLE: GenState = { phase: 'idle', message: '', chars: 0, planPreview: null }
 
@@ -58,6 +74,19 @@ export default function Home() {
   const [notes, setNotes] = useState('')
   const [seriesMode, setSeriesMode] = useState('standalone')
 
+  // ── topic generator + queue ──────────────────────────────
+  const [subject, setSubject] = useState(
+    () => localStorage.getItem(LS_SUBJECT) ?? 'Esoteric and occult traditions for a hidden mystery school library',
+  )
+  const [count, setCount] = useState(10)
+  const [suggestions, setSuggestions] = useState<Suggestion[]>(() => loadJson(LS_SUGGESTIONS, []))
+  const [queue, setQueue] = useState<QueueItem[]>(() => loadJson(LS_QUEUE, []))
+  const [suggesting, setSuggesting] = useState(false)
+  const [queueRunning, setQueueRunning] = useState(false)
+  const queueStopRef = useRef(false)
+  const queueRef = useRef<QueueItem[]>([])
+  queueRef.current = queue
+
   // ── generation state ─────────────────────────────────────
   const [gen, setGen] = useState<GenState>(IDLE)
   const [current, setCurrent] = useState<Course | null>(null)
@@ -75,6 +104,16 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem(LS_MODEL, modelId)
   }, [modelId])
+
+  useEffect(() => {
+    localStorage.setItem(LS_SUBJECT, subject)
+  }, [subject])
+  useEffect(() => {
+    localStorage.setItem(LS_SUGGESTIONS, JSON.stringify(suggestions))
+  }, [suggestions])
+  useEffect(() => {
+    localStorage.setItem(LS_QUEUE, JSON.stringify(queue))
+  }, [queue])
 
   useEffect(() => {
     ;(async () => {
@@ -101,24 +140,25 @@ export default function Home() {
   }
 
   // ── generation orchestration ─────────────────────────────
-  async function generate() {
-    const t = topic.trim()
+  async function generate(ov?: { topic: string; notes: string }): Promise<boolean> {
+    const t = (ov ? ov.topic : topic).trim()
+    const mode = ov ? 'standalone' : seriesMode
     const model = models.find((m) => `${m.provider}:${m.id}` === modelId)
-    const existing = seriesList.find((s) => s.id === seriesMode)
+    const existing = ov ? undefined : seriesList.find((s) => s.id === seriesMode)
 
     if (!existing && !t) {
       toast.error('Give the masterclass a topic first')
-      return
+      return false
     }
     if (!model) {
       toast.error('Pick a model')
-      return
+      return false
     }
     const apiKey = keys[model.provider].trim()
     if (!apiKey) {
       setSettingsOpen(true)
       toast.error(`Add your ${PROVIDERS[model.provider].label} API key first`)
-      return
+      return false
     }
 
     const abort = new AbortController()
@@ -131,7 +171,7 @@ export default function Home() {
       let part: number | null = null
       let previousParts: Course[] = []
       let effTopic = t
-      let effNotes = notes
+      let effNotes = ov ? ov.notes : notes
 
       if (existing) {
         series = existing
@@ -143,7 +183,7 @@ export default function Home() {
         part = previousParts.length + 1
         if (part > existing.plan.length) throw new Error('This series is already complete.')
         setGen({ phase: 'writing', message: '', chars: 0, planPreview: existing.plan })
-      } else if (seriesMode === 'new') {
+      } else if (mode === 'new') {
         setGen((g) => ({ ...g, phase: 'planning', message: 'Designing the curriculum…' }))
         const raw = await chatOnce({
           provider: model.provider,
@@ -232,6 +272,7 @@ export default function Home() {
       toast.success(`“${course.title}” is ready`, {
         description: `${(course.html.length / 1000).toFixed(0)}k characters · preview is live`,
       })
+      return true
     } catch (e: any) {
       if (e?.name === 'AbortError') {
         setGen(IDLE)
@@ -240,8 +281,85 @@ export default function Home() {
         setGen({ phase: 'error', message: e?.message ?? 'Generation failed', chars: 0, planPreview: null })
         toast.error(e?.message ?? 'Generation failed')
       }
+      return false
     } finally {
       abortRef.current = null
+    }
+  }
+
+  // ── topic suggestions + queue ────────────────────────────
+  const knownTitles = () => [
+    ...courses.flatMap((c) => [c.title, c.topic]),
+    ...seriesList.flatMap((s) => [s.title, s.topic]),
+  ]
+
+  async function suggestTopics() {
+    const model = models.find((m) => `${m.provider}:${m.id}` === modelId)
+    if (!model) return toast.error('Pick a model')
+    const apiKey = keys[model.provider].trim()
+    if (!apiKey) {
+      setSettingsOpen(true)
+      return toast.error(`Add your ${PROVIDERS[model.provider].label} API key first`)
+    }
+    setSuggesting(true)
+    try {
+      const known = [...new Set(knownTitles())]
+      const pending = [...queue.map((q) => q.topic), ...suggestions.map((s) => s.topic)]
+      const raw = await chatOnce({
+        provider: model.provider,
+        apiKey,
+        model: model.id,
+        messages: [
+          { role: 'system', content: TOPIC_SYSTEM },
+          { role: 'user', content: topicSuggestPrompt(subject.trim(), count, [...known, ...pending].slice(0, 300)) },
+        ],
+        maxTokens: 4096,
+        temperature: 0.9,
+      })
+      const all = parseSuggestions(raw)
+      if (!all.length) throw new Error('The model returned no usable topics. Try again or switch model.')
+      const blocked = [...known, ...pending]
+      const fresh: Suggestion[] = []
+      for (const s of all) {
+        if (isDuplicateTopic(s.topic, [...blocked, ...fresh.map((f) => f.topic)])) continue
+        fresh.push({ id: uid(), topic: s.topic, angle: s.angle, checked: false })
+      }
+      const dropped = all.length - fresh.length
+      setSuggestions([...suggestions, ...fresh])
+      toast.success(`${fresh.length} new topics`, {
+        description: dropped ? `${dropped} skipped — already in your library or queue` : undefined,
+      })
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Topic generation failed')
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
+  function addSelectedToQueue() {
+    const picked = suggestions.filter((s) => s.checked)
+    setQueue([...queue, ...picked.map((s) => ({ id: s.id, topic: s.topic, notes: s.angle }))])
+    setSuggestions(suggestions.filter((s) => !s.checked))
+    toast.success(`${picked.length} added to queue`)
+  }
+
+  async function runQueue() {
+    if (queueRunning) return
+    queueStopRef.current = false
+    setQueueRunning(true)
+    let built = 0
+    try {
+      while (queueRef.current.length && !queueStopRef.current) {
+        const item = queueRef.current[0]
+        const ok = await generate({ topic: item.topic, notes: item.notes })
+        if (!ok) break
+        built++
+        queueRef.current = queueRef.current.filter((x) => x.id !== item.id)
+        setQueue(queueRef.current)
+      }
+    } finally {
+      setQueueRunning(false)
+      if (built) toast.success(`Queue built ${built} course${built > 1 ? 's' : ''}`)
     }
   }
 
@@ -290,7 +408,7 @@ export default function Home() {
     }
   }
 
-  const busy = gen.phase === 'planning' || gen.phase === 'writing' || gen.phase === 'assembling'
+  const busy = queueRunning || gen.phase === 'planning' || gen.phase === 'writing' || gen.phase === 'assembling'
 
   return (
     <div className="min-h-dvh">
@@ -373,8 +491,11 @@ export default function Home() {
               modelId={modelId}
               setModelId={setModelId}
               onAddCustom={addCustomModel}
-              onGenerate={generate}
-              onCancel={() => abortRef.current?.abort()}
+              onGenerate={() => generate()}
+              onCancel={() => {
+                queueStopRef.current = true
+                abortRef.current?.abort()
+              }}
               gen={gen}
             />
           </div>
@@ -387,6 +508,27 @@ export default function Home() {
             )}
           </div>
         </div>
+
+        <TopicQueue
+          subject={subject}
+          setSubject={setSubject}
+          count={count}
+          setCount={setCount}
+          suggestions={suggestions}
+          setSuggestions={setSuggestions}
+          queue={queue}
+          setQueue={setQueue}
+          suggesting={suggesting}
+          queueRunning={queueRunning}
+          busy={busy}
+          onSuggest={suggestTopics}
+          onAddToQueue={addSelectedToQueue}
+          onRunQueue={runQueue}
+          onStopQueue={() => {
+            queueStopRef.current = true
+            abortRef.current?.abort()
+          }}
+        />
 
         <Library
           courses={courses}
