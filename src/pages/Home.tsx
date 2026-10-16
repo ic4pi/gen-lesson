@@ -240,7 +240,7 @@ export default function Home() {
 
   // ── generation orchestration ─────────────────────────────
   /** Placement context for numbered (Esoteric Decimal System) items. */
-  function decimalNotes(m: DecimalMeta, title: string, queue: QueueItem[], library: Course[]): string {
+  function decimalNotes(m: DecimalMeta, title: string, queue: QueueItem[], library: Course[], extra = ''): string {
     const sibs = [
       ...queue.filter((q) => q.meta?.division === m.division && q.meta.number !== m.number).map((q) => `${q.meta!.number} ${q.topic}`),
       ...library.filter((c) => c.meta?.division === m.division && c.meta.number !== m.number).map((c) => `${c.meta!.number} ${c.title}`),
@@ -253,6 +253,7 @@ export default function Home() {
         ? `This is the OVERVIEW of its ${/class/i.test(m.kind) ? 'class' : 'division'}: map the whole field, teach the foundations and orientation, and point forward to the sibling masterclasses below, which each get their own full masterclass, so do not teach them in full here.`
         : `This is ONE focused section within "${m.division}": teach "${title}" in real depth with practical specificity, and do not re-teach what the sibling masterclasses cover; cross-reference them by title where useful.`,
       uniq.length ? `Sibling masterclasses in this division:\n${uniq.map((x) => `- ${x}`).join('\n')}` : '',
+      extra.trim() ? `SCOPE AND ACCURACY NOTES FROM THE CURATOR (follow these):\n${extra.trim()}` : '',
       'Check what the existing library already says on this subject; build on it, never repeat it.',
     ]
       .filter(Boolean)
@@ -341,7 +342,7 @@ export default function Home() {
       let effTopic = t
       let effNotes = ov ? ov.notes : notes
       const dmeta = ov?.meta
-      if (dmeta) effNotes = decimalNotes(dmeta, t, queueRef.current, coursesRef.current)
+      if (dmeta) effNotes = decimalNotes(dmeta, t, queueRef.current, coursesRef.current, ov?.notes)
 
       if (existing) {
         series = existing

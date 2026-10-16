@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { parseContents } from '@/lib/parseContents'
 import { ArrowDown, ArrowUp, Layers, FileText, Lightbulb, ListPlus, Play, RotateCcw, Square, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -61,6 +61,11 @@ export default function TopicQueue(p: Props) {
     for (const x of numbered) c[x.meta!.wave ?? 0] = (c[x.meta!.wave ?? 0] ?? 0) + 1
     return c
   }, [numbered])
+  useEffect(() => {
+    const present = Object.keys(waveCounts).map(Number)
+    if (present.length && !waves.some((w) => present.includes(w))) setWaves([Math.min(...present)])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waveCounts])
   const pickedCount = numbered.filter((x) => waves.includes(x.meta!.wave ?? 0)).length
   const checked = p.suggestions.filter((s) => s.checked)
   const toggle = (id: string, v: boolean) =>

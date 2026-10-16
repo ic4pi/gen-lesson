@@ -21,20 +21,20 @@ function fromStructured(text: string): ParsedTopic[] | null {
         rows = rows.filter((x) => !x.status || ['pending', 'failed', 'in_progress'].includes(String(x.status)))
         rows.sort(
           (a, b) =>
-            (Number(a.wave) || 9) - (Number(b.wave) || 9) ||
+            (Number.isFinite(Number(a.wave)) && a.wave !== null ? Number(a.wave) : 9) - (Number.isFinite(Number(b.wave)) && b.wave !== null ? Number(b.wave) : 9) ||
             (Number(a.order) || 1e9) - (Number(b.order) || 1e9) ||
             String(a.number).localeCompare(String(b.number)),
         )
         return rows.map((x) => ({
           topic: String(x.title).trim(),
-          notes: '',
+          notes: String(x.scope ?? x.notes ?? '').trim(),
           meta: {
             number: String(x.number),
             filename: String(x.filename ?? '').replace(/[^a-z0-9._-]/gi, '-'),
             cls: String(x.class ?? ''),
             division: String(x.division ?? ''),
             kind: String(x.kind ?? 'section masterclass'),
-            wave: Number(x.wave) || undefined,
+            wave: x.wave !== undefined && x.wave !== null && Number.isFinite(Number(x.wave)) ? Number(x.wave) : undefined,
             tier: Number(x.tier) || undefined,
           },
         }))
