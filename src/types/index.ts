@@ -105,8 +105,16 @@ export interface Suggestion {
   checked: boolean
 }
 
+export type QueueMode = 'standalone' | 'series'
+export type QueueStatus = 'pending' | 'running' | 'done' | 'failed'
+
 export interface QueueItem {
   id: string
   topic: string
   notes: string
+  mode: QueueMode
+  status: QueueStatus
+  seriesId?: string
+  progress?: string
+  error?: string
 }

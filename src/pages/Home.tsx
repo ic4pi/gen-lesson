@@ -11,6 +11,7 @@ import SettingsDialog from '@/sections/SettingsDialog'
 import TopicQueue from '@/sections/TopicQueue'
 import { DEFAULT_MODELS, PROVIDERS } from '@/lib/models'
 import { chatOnce, streamChat } from '@/lib/llm'
+import { parseContents } from '@/lib/parseContents'
 import {
   CURRICULUM_SYSTEM,
   coursePrompt,
@@ -54,6 +55,30 @@ function loadJson<T>(key: string, fallback: T): T {
   }
 }
 const LS_PUBLISH = 'mf.publish'
+
+interface GenOverride {
+  topic: string
+  notes: string
+  mode?: 'standalone' | 'new'
+  series?: Series
+  previous?: Course[]
+}
+interface GenResult {
+  course: Course
+  series: Series | null
+}
+
+const LS_AUTORUN = 'mf.autorun'
+const sleep = (ms: number, signal: () => boolean) =>
+  new Promise<void>((res) => {
+    const t0 = Date.now()
+    const id = setInterval(() => {
+      if (signal() || Date.now() - t0 >= ms) {
+        clearInterval(id)
+        res()
+      }
+    }, 500)
+  })
 
 const IDLE: GenState = { phase: 'idle', message: '', chars: 0, planPreview: null }
 
@@ -105,12 +130,23 @@ export default function Home() {
   )
   const [count, setCount] = useState(10)
   const [suggestions, setSuggestions] = useState<Suggestion[]>(() => loadJson(LS_SUGGESTIONS, []))
-  const [queue, setQueue] = useState<QueueItem[]>(() => loadJson(LS_QUEUE, []))
+  const [queue, setQueue] = useState<QueueItem[]>(() =>
+    loadJson<any[]>(LS_QUEUE, []).map((q) => ({ mode: 'standalone', status: 'pending', ...q })) as QueueItem[],
+  )
+  const [libraryLoaded, setLibraryLoaded] = useState(false)
   const [suggesting, setSuggesting] = useState(false)
   const [queueRunning, setQueueRunning] = useState(false)
   const queueStopRef = useRef(false)
-  const queueRef = useRef<QueueItem[]>([])
-  queueRef.current = queue
+  const queueRef = useRef<QueueItem[]>(queue)
+  const lastErrorRef = useRef('')
+  const modelRef = useRef(modelId)
+  modelRef.current = modelId
+  const keysRef = useRef(keys)
+  keysRef.current = keys
+  const seriesRef = useRef<Series[]>([])
+  seriesRef.current = seriesList
+  const coursesRef = useRef<Course[]>([])
+  coursesRef.current = courses
 
   // ── generation state ─────────────────────────────────────
   const [gen, setGen] = useState<GenState>(IDLE)
@@ -149,6 +185,7 @@ export default function Home() {
       } catch {
         toast.error('Could not open the local library database')
       }
+      setLibraryLoaded(true)
     })()
   }, [])
 
@@ -165,25 +202,25 @@ export default function Home() {
   }
 
   // ── generation orchestration ─────────────────────────────
-  async function generate(ov?: { topic: string; notes: string }): Promise<boolean> {
+  async function generate(ov?: GenOverride): Promise<GenResult | null> {
     const t = (ov ? ov.topic : topic).trim()
-    const mode = ov ? 'standalone' : seriesMode
-    const model = models.find((m) => `${m.provider}:${m.id}` === modelId)
-    const existing = ov ? undefined : seriesList.find((s) => s.id === seriesMode)
+    const mode = ov ? (ov.mode ?? 'standalone') : seriesMode
+    const model = models.find((m) => `${m.provider}:${m.id}` === modelRef.current)
+    const existing = ov ? ov.series : seriesList.find((s) => s.id === seriesMode)
 
     if (!existing && !t) {
       toast.error('Give the masterclass a topic first')
-      return false
+      return null
     }
     if (!model) {
       toast.error('Pick a model')
-      return false
+      return null
     }
-    const apiKey = keys[model.provider].trim()
+    const apiKey = keysRef.current[model.provider].trim()
     if (!apiKey) {
       setSettingsOpen(true)
       toast.error(`Add your ${PROVIDERS[model.provider].label} API key first`)
-      return false
+      return null
     }
 
     const abort = new AbortController()
@@ -202,9 +239,9 @@ export default function Home() {
         series = existing
         effTopic = existing.topic
         effNotes = existing.notes
-        previousParts = courses
-          .filter((c) => c.seriesId === existing.id)
-          .sort((a, b) => (a.part ?? 0) - (b.part ?? 0))
+        previousParts = (ov?.previous ?? courses.filter((c) => c.seriesId === existing.id)).sort(
+          (a, b) => (a.part ?? 0) - (b.part ?? 0),
+        )
         part = previousParts.length + 1
         if (part > existing.plan.length) throw new Error('This series is already complete.')
         setGen({ phase: 'writing', message: '', chars: 0, planPreview: existing.plan })
@@ -216,7 +253,7 @@ export default function Home() {
           model: model.id,
           messages: [
             { role: 'system', content: CURRICULUM_SYSTEM },
-            { role: 'user', content: curriculumPrompt(t, notes) },
+            { role: 'user', content: curriculumPrompt(t, effNotes) },
           ],
           maxTokens: 2048,
           temperature: 0.4,
@@ -228,14 +265,14 @@ export default function Home() {
           id: uid(),
           title: plan.seriesTitle,
           topic: t,
-          notes,
+          notes: effNotes,
           plan: plan.parts,
           createdAt: Date.now(),
         }
         await db.putSeries(series)
         setSeriesList((s) => [...s, series!])
         part = 1
-        setSeriesMode(series.id)
+        if (!ov) setSeriesMode(series.id)
         setGen({ phase: 'writing', message: '', chars: 0, planPreview: plan.parts })
       } else {
         setGen({ phase: 'writing', message: '', chars: 0, planPreview: null })
@@ -297,16 +334,17 @@ export default function Home() {
       toast.success(`“${course.title}” is ready`, {
         description: `${(course.html.length / 1000).toFixed(0)}k characters · preview is live`,
       })
-      return true
+      return { course, series }
     } catch (e: any) {
       if (e?.name === 'AbortError') {
         setGen(IDLE)
         toast('Generation cancelled')
       } else {
+        lastErrorRef.current = e?.message ?? 'Generation failed'
         setGen({ phase: 'error', message: e?.message ?? 'Generation failed', chars: 0, planPreview: null })
         toast.error(e?.message ?? 'Generation failed')
       }
-      return false
+      return null
     } finally {
       abortRef.current = null
     }
@@ -361,32 +399,168 @@ export default function Home() {
     }
   }
 
-  function addSelectedToQueue() {
+  // all queue edits go through here so the running loop and the UI never disagree
+  const updateQueue = (fn: (q: QueueItem[]) => QueueItem[]) => {
+    queueRef.current = fn(queueRef.current)
+    setQueue(queueRef.current)
+  }
+  const patchItem = (id: string, patch: Partial<QueueItem>) =>
+    updateQueue((q) => q.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+
+  const newItem = (topic: string, notes: string, mode: QueueItem['mode']): QueueItem => ({
+    id: uid(),
+    topic,
+    notes,
+    mode,
+    status: 'pending',
+  })
+
+  function addSelectedToQueue(mode: QueueItem['mode']) {
     const picked = suggestions.filter((s) => s.checked)
-    setQueue([...queue, ...picked.map((s) => ({ id: s.id, topic: s.topic, notes: s.angle }))])
+    updateQueue((q) => [...q, ...picked.map((s) => newItem(s.topic, s.angle, mode))])
     setSuggestions(suggestions.filter((s) => !s.checked))
     toast.success(`${picked.length} added to queue`)
   }
 
+  function importContents(text: string, mode: QueueItem['mode']) {
+    const parsed = parseContents(text)
+    if (!parsed.length) {
+      toast.error('Found no topics in that text')
+      return 0
+    }
+    const blocked = [...knownTitles(), ...queueRef.current.map((q) => q.topic)]
+    const fresh: QueueItem[] = []
+    for (const p of parsed) {
+      if (isDuplicateTopic(p.topic, [...blocked, ...fresh.map((f) => f.topic)])) continue
+      fresh.push(newItem(p.topic, p.notes, mode))
+    }
+    updateQueue((q) => [...q, ...fresh])
+    toast.success(`${fresh.length} topics queued`, {
+      description: parsed.length > fresh.length ? `${parsed.length - fresh.length} skipped — already in your library or queue` : undefined,
+    })
+    return fresh.length
+  }
+
+  function moveItem(id: string, dir: -1 | 1) {
+    updateQueue((q) => {
+      const i = q.findIndex((x) => x.id === id)
+      const j = i + dir
+      if (i < 0 || j < 0 || j >= q.length) return q
+      if (q[i].status === 'running' || q[j].status === 'running') return q
+      const n = [...q]
+      ;[n[i], n[j]] = [n[j], n[i]]
+      return n
+    })
+  }
+  const removeItem = (id: string) => updateQueue((q) => q.filter((x) => x.id !== id))
+  const toggleItemMode = (id: string) =>
+    updateQueue((q) =>
+      q.map((x) => (x.id === id ? { ...x, mode: x.mode === 'series' ? 'standalone' : 'series' } : x)),
+    )
+  const rerunItem = (id: string) =>
+    patchItem(id, { status: 'pending', seriesId: undefined, progress: undefined, error: undefined })
+  const clearDone = () => updateQueue((q) => q.filter((x) => x.status !== 'done'))
+
+  /** Run one generation, retrying transient failures (rate limits, network, bad output). */
+  async function genWithRetry(ov: GenOverride): Promise<GenResult | null> {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const r = await generate(ov)
+      if (r) return r
+      if (queueStopRef.current) return null
+      if (attempt < 3) {
+        toast(`Retrying in ${attempt * 30}s (attempt ${attempt + 1}/3)…`)
+        await sleep(attempt * 30_000, () => queueStopRef.current)
+        if (queueStopRef.current) return null
+      }
+    }
+    return null
+  }
+
+  async function processItem(item: QueueItem): Promise<boolean> {
+    if (item.mode === 'standalone') return !!(await genWithRetry({ topic: item.topic, notes: item.notes }))
+
+    let series = item.seriesId ? (seriesRef.current.find((s) => s.id === item.seriesId) ?? null) : null
+    let parts: Course[] = series ? coursesRef.current.filter((c) => c.seriesId === series!.id) : []
+    if (!series) {
+      patchItem(item.id, { progress: 'Planning series…' })
+      const r = await genWithRetry({ topic: item.topic, notes: item.notes, mode: 'new' })
+      if (!r?.series) return false
+      series = r.series
+      parts = [r.course]
+      patchItem(item.id, { seriesId: series.id })
+    }
+    while (parts.length < series.plan.length) {
+      patchItem(item.id, { progress: `Part ${parts.length + 1}/${series.plan.length}` })
+      if (queueStopRef.current) return false
+      const r = await genWithRetry({ topic: series.topic, notes: series.notes, series, previous: parts })
+      if (!r) return false
+      parts = [...parts, r.course]
+    }
+    return true
+  }
+
   async function runQueue() {
     if (queueRunning) return
+    const model = models.find((m) => `${m.provider}:${m.id}` === modelRef.current)
+    if (!model) return void toast.error('Pick a model')
+    if (!keysRef.current[model.provider].trim()) {
+      setSettingsOpen(true)
+      return void toast.error(`Add your ${PROVIDERS[model.provider].label} API key first`)
+    }
     queueStopRef.current = false
+    localStorage.setItem(LS_AUTORUN, 'on')
     setQueueRunning(true)
-    let built = 0
+    let wake: any = null
     try {
-      while (queueRef.current.length && !queueStopRef.current) {
-        const item = queueRef.current[0]
-        const ok = await generate({ topic: item.topic, notes: item.notes })
-        if (!ok) break
-        built++
-        queueRef.current = queueRef.current.filter((x) => x.id !== item.id)
-        setQueue(queueRef.current)
+      wake = await (navigator as any).wakeLock?.request('screen')
+    } catch {
+      // wake lock unavailable — the computer may sleep
+    }
+    let built = 0
+    let failed = 0
+    try {
+      for (;;) {
+        // a 'running' leftover (page reload mid-build) is resumed like a pending one
+        const item = queueRef.current.find((x) => x.status === 'pending' || x.status === 'running')
+        if (!item || queueStopRef.current) break
+        patchItem(item.id, { status: 'running', error: undefined })
+        const ok = await processItem(item)
+        if (queueStopRef.current) {
+          patchItem(item.id, { status: 'pending', progress: undefined })
+          break
+        }
+        if (ok) {
+          built++
+          patchItem(item.id, { status: 'done', progress: undefined })
+        } else {
+          failed++
+          patchItem(item.id, { status: 'failed', progress: undefined, error: lastErrorRef.current || 'Failed' })
+        }
       }
     } finally {
+      wake?.release?.().catch(() => {})
       setQueueRunning(false)
-      if (built) toast.success(`Queue built ${built} course${built > 1 ? 's' : ''}`)
+      if (!queueStopRef.current) localStorage.removeItem(LS_AUTORUN)
+      if (built || failed)
+        toast.success(`Queue finished — ${built} built${failed ? `, ${failed} failed` : ''}`)
     }
   }
+
+  function stopQueue() {
+    queueStopRef.current = true
+    localStorage.removeItem(LS_AUTORUN)
+    abortRef.current?.abort()
+  }
+
+  // resume an interrupted run (tab closed / reloaded mid-queue)
+  useEffect(() => {
+    if (!libraryLoaded) return
+    if (localStorage.getItem(LS_AUTORUN) === 'on' && queueRef.current.some((x) => x.status === 'pending' || x.status === 'running')) {
+      toast('Resuming your queue…')
+      void runQueue()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [libraryLoaded])
 
   // ── review + publish ─────────────────────────────────────
   const reviewer = models.find((m) => `${m.provider}:${m.id}` === publish.reviewerModelId) ?? null
@@ -559,10 +733,7 @@ export default function Home() {
               setModelId={setModelId}
               onAddCustom={addCustomModel}
               onGenerate={() => generate()}
-              onCancel={() => {
-                queueStopRef.current = true
-                abortRef.current?.abort()
-              }}
+              onCancel={stopQueue}
               gen={gen}
             />
           </div>
@@ -591,17 +762,19 @@ export default function Home() {
           suggestions={suggestions}
           setSuggestions={setSuggestions}
           queue={queue}
-          setQueue={setQueue}
           suggesting={suggesting}
           queueRunning={queueRunning}
           busy={busy}
           onSuggest={suggestTopics}
           onAddToQueue={addSelectedToQueue}
+          onImport={importContents}
           onRunQueue={runQueue}
-          onStopQueue={() => {
-            queueStopRef.current = true
-            abortRef.current?.abort()
-          }}
+          onStopQueue={stopQueue}
+          onMove={moveItem}
+          onRemove={removeItem}
+          onToggleMode={toggleItemMode}
+          onRerun={rerunItem}
+          onClearDone={clearDone}
         />
 
         <Library
