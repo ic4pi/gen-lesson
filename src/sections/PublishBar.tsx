@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, ExternalLink, Rocket, ShieldCheck, XCircle } from 'lucide-react'
+import { CheckCircle2, ExternalLink, Rocket, ShieldCheck, Wand2, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import type { Course } from '@/types'
@@ -9,15 +9,16 @@ interface Props {
   course: Course
   reviewerLabel: string | null
   onReview: () => Promise<void>
+  onAutoFix: () => Promise<void>
   onPublish: () => Promise<void>
 }
 
-export default function PublishBar({ course, hexpoRepo, reviewerLabel, onReview, onPublish }: Props) {
-  const [busy, setBusy] = useState<'review' | 'publish' | null>(null)
+export default function PublishBar({ course, hexpoRepo, reviewerLabel, onReview, onAutoFix, onPublish }: Props) {
+  const [busy, setBusy] = useState<'review' | 'fix' | 'publish' | null>(null)
   const r = course.review
   const stale = r && r.htmlLength !== course.html.length
 
-  const run = async (kind: 'review' | 'publish', fn: () => Promise<void>) => {
+  const run = async (kind: 'review' | 'fix' | 'publish', fn: () => Promise<void>) => {
     setBusy(kind)
     try {
       await fn()
@@ -41,6 +42,16 @@ export default function PublishBar({ course, hexpoRepo, reviewerLabel, onReview,
         >
           <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
           {busy === 'review' ? 'Reviewing…' : r ? 'Re-run review' : 'Run review'}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy !== null || !reviewerLabel}
+          onClick={() => run('fix', onAutoFix)}
+          title="Review, then rebuild with the editor's notes until it passes"
+        >
+          <Wand2 className="mr-1.5 h-3.5 w-3.5" />
+          {busy === 'fix' ? 'Reviewing / rebuilding…' : 'Review & auto-fix'}
         </Button>
         <Button
           size="sm"

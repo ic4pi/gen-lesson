@@ -27,6 +27,12 @@ const OUTPUT_CONTRACT = `OUTPUT CONTRACT — follow exactly:
 3. ALL CSS lives in a single <style> block in <head>. ALL JS lives in a single <script> block before </body>. No external scripts or stylesheets except Google Fonts. Never hotlink images — use inline SVG, CSS art, gradients, or canvas for all visuals.
 4. The page must never make network requests: no fetch, XMLHttpRequest, WebSocket or sendBeacon anywhere in the JS, and never write those words in prose either.`
 
+const ACCURACY_SPEC = `ACCURACY & DEPTH STANDARD — this outranks everything else:
+- Every factual claim must be one you can stand behind. Names, dates, titles, quotations, numbers, attributions, etymologies and "ancient sources say…" statements must be correct. If you are not sure, leave it out or flag it plainly as uncertain — NEVER invent a quote, citation, date, text title or scholar.
+- Separate three tiers of claim and label them in the text wherever the distinction matters: ESTABLISHED (documented, mainstream scholarship), DEBATED (scholars or practitioners disagree — say who and why), and TRADITION/PRACTICE (what a school or lineage believes or does, presented as such, not as fact).
+- Go beyond the textbook summary. Each chapter must contain material most introductions omit: primary texts and what they actually say, original-language terms with their real meaning, lesser-known figures, suppressed or neglected lineages, surprising historical connections, genuine scholarly disputes, and the "why this is usually told wrong" corrections. Hidden knowledge means obscure but VERIFIABLE — not invented, not vague mystique.
+- Name concrete sources (author, work, period) so the reader can check you. Prefer specific over impressive.`
+
 const DESIGN_SPEC = `QUALITY BAR — read this twice:
 This is for a private mystery-school library. The pages must look and feel like a premium, hand-crafted immersive course — the level of a high-end editorial site crossed with an interactive experience. Think: a hero with a signature animated visual that is unique to the topic (a self-drawing sigil, a particle horizon that bends toward the cursor, drifting glyphs), a sticky chapter navigation, scroll progress, pull quotes with attribution, narrative story blocks, interactive exercises with a saved private journal, deep-dive drawers, hover-definition terms, a real glossary, and honest labelling of what is established versus speculative. Generic, template-looking, flat or text-wall pages are unacceptable. Exceed that bar on every page.
 
@@ -94,6 +100,8 @@ TOPIC: ${topic}
 ${seriesBlock}
 ${notes.trim() ? `\nCREATOR NOTES / OUTLINE (treat as requirements — if this contains an outline, follow it for chapter structure):\n${notes}\n` : ''}
 ${OUTPUT_CONTRACT}
+
+${ACCURACY_SPEC}
 
 ${DESIGN_SPEC}
 
@@ -211,4 +219,42 @@ export function parseSuggestions(raw: string): { topic: string; angle: string }[
   } catch {
     return []
   }
+}
+
+export function rebuildPrompt(opts: {
+  topic: string
+  notes: string
+  html: string
+  verdict: string
+  worthIt: string
+  issues: { severity: string; text: string }[]
+  weak: string[]
+}): string {
+  const issues = opts.issues.length
+    ? opts.issues.map((i) => `- [${i.severity.toUpperCase()}] ${i.text}`).join('\n')
+    : '- (no itemised issues; raise the weak areas below)'
+  return `You are the Foundry, rebuilding a masterclass that an independent editor refused to publish. Produce a better version of the SAME course.
+
+TOPIC: ${opts.topic}
+${opts.notes.trim() ? `CREATOR NOTES:\n${opts.notes}\n` : ''}
+EDITOR'S VERDICT: ${opts.verdict} — ${opts.worthIt}
+WEAKEST AREAS: ${opts.weak.join(', ') || 'none flagged'}
+ISSUES TO FIX (every one of them):
+${issues}
+
+${ACCURACY_SPEC}
+
+REBUILD RULES:
+- Fix every issue above. Where the editor flagged a claim as wrong or unverifiable, replace it with the correct, checkable fact, or delete it. Do not defend errors.
+- Then audit every other claim in the document yourself with the same strictness and correct anything doubtful.
+- Add real hidden-knowledge depth where the editor found it thin: primary sources, original terms, neglected figures, genuine disputes, common-misconception corrections.
+- Keep what already works: theme, design, structure, working interactive elements, quizzes (update quiz answers if facts change). Remove filler.
+- Keep the same output contract: one complete HTML document, <!DOCTYPE html> to </html>, the COURSE_META comment before </body>, one <style>, one <script>, no external scripts, and no network calls (no fetch, XMLHttpRequest, WebSocket, sendBeacon).
+
+${OUTPUT_CONTRACT}
+
+CURRENT DOCUMENT TO REBUILD:
+${opts.html}
+
+Output the complete rebuilt HTML document and nothing else.`
 }

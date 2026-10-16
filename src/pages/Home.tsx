@@ -15,6 +15,7 @@ import { parseContents } from '@/lib/parseContents'
 import { enhanceCourseHtml, hasFx } from '@/lib/fx'
 import {
   CURRICULUM_SYSTEM,
+  rebuildPrompt,
   coursePrompt,
   curriculumPrompt,
   TOPIC_SYSTEM,
@@ -594,25 +595,97 @@ export default function Home() {
     setCurrent((cur) => (cur?.id === c.id ? c : cur))
   }
 
-  async function reviewCurrent() {
-    if (!current || !reviewer) return
+  async function runReview(c: Course): Promise<Course> {
+    if (!reviewer) throw new Error('Pick a reviewer model in Keys → Publish')
     const apiKey = keys[reviewer.provider].trim()
     if (!apiKey) {
       setSettingsOpen(true)
       throw new Error(`Add your ${PROVIDERS[reviewer.provider].label} API key for the reviewer`)
     }
     const { tax } = await loadHexpo(publish)
-    const review = await reviewCourse({
-      course: current,
-      reviewer,
-      apiKey,
-      tax,
-      threshold: publish.threshold,
-    })
-    await saveCourse({ ...current, review })
-    review.passed
-      ? toast.success(`Passed — ${review.valueScore}/100`, { description: review.worthIt })
-      : toast.warning(`Not publishable — ${review.valueScore}/100`, { description: review.worthIt })
+    const review = await reviewCourse({ course: c, reviewer, apiKey, tax, threshold: publish.threshold })
+    const next = { ...c, review }
+    await saveCourse(next)
+    return next
+  }
+
+  async function reviewCurrent() {
+    if (!current) return
+    const { review } = await runReview(current)
+    review!.passed
+      ? toast.success(`Passed — ${review!.valueScore}/100`, { description: review!.worthIt })
+      : toast.warning(`Not publishable — ${review!.valueScore}/100`, { description: review!.worthIt })
+  }
+
+  /** Review → rebuild with the editor's notes → review again, until it passes or rounds run out. */
+  async function autoImprove() {
+    if (!current) return
+    const writer = models.find((m) => m.id === current.modelId && m.provider === current.provider)
+    const writerKey = keys[current.provider].trim()
+    if (!writer || !writerKey) {
+      setSettingsOpen(true)
+      throw new Error(`Rebuilding needs the original writer (${current.modelId}) and its API key`)
+    }
+    const rounds = Math.max(1, publish.maxRounds || 3)
+    let cur = await runReview(current)
+    let best = cur
+    for (let round = 1; round <= rounds && !cur.review!.passed; round++) {
+      const r = cur.review!
+      toast.message(`Rebuild ${round}/${rounds}`, {
+        description: `Scored ${r.valueScore}/100 — fixing ${r.issues.length} issue(s) and deepening content…`,
+      })
+      const weak = Object.entries(r.scores)
+        .filter(([, v]) => v < 7)
+        .map(([k, v]) => `${k} ${v}/10`)
+      let acc = ''
+      for await (const delta of streamChat({
+        provider: writer.provider,
+        apiKey: writerKey,
+        model: writer.id,
+        messages: [
+          {
+            role: 'user',
+            content: rebuildPrompt({
+              topic: cur.topic,
+              notes: cur.notes,
+              html: cur.html,
+              verdict: r.verdict,
+              worthIt: r.worthIt,
+              issues: r.issues,
+              weak,
+            }),
+          },
+        ],
+        maxTokens: 32000,
+        temperature: 0.5,
+      })) {
+        acc += delta
+        setGen((g) => ({ ...g, chars: acc.length }))
+      }
+      const parsed = parseCourseHtml(acc)
+      if (!parsed.html || parsed.html.length < 800 || looksTruncated(parsed.html)) {
+        toast.error('Rebuild came back incomplete — keeping the previous version')
+        break
+      }
+      const rebuilt: Course = {
+        ...cur,
+        html: parsed.html,
+        title: parsed.title ?? cur.title,
+        summary: parsed.summary || cur.summary,
+        topicsCovered: parsed.topicsCovered.length ? parsed.topicsCovered : cur.topicsCovered,
+        review: undefined,
+      }
+      await saveCourse(rebuilt)
+      cur = await runReview(rebuilt)
+      if (cur.review!.valueScore >= best.review!.valueScore || cur.review!.passed) best = cur
+    }
+    if (best !== cur) await saveCourse(best) // a later rebuild scored worse — restore the best one
+    const r = best.review!
+    r.passed
+      ? toast.success(`Passed — ${r.valueScore}/100`, { description: 'Ready to publish.' })
+      : toast.warning(`Still not publishable after ${rounds} rebuild(s) — best ${r.valueScore}/100`, {
+          description: r.worthIt,
+        })
   }
 
   async function publishCurrent() {
@@ -767,6 +840,7 @@ export default function Home() {
               reviewerLabel={reviewer ? reviewer.label : null}
               hexpoRepo={publish.repo}
               onReview={reviewCurrent}
+              onAutoFix={autoImprove}
               onPublish={publishCurrent}
             />
             {gen.phase === 'error' && (

@@ -3,7 +3,7 @@ import { chatOnce } from './llm'
 import { visibleWords, type Taxonomy } from './hexpo'
 import type { Course, ModelOption, ReviewResult } from '@/types'
 
-const SYSTEM = `You are a hard-to-impress editorial reviewer for a paid esoteric-and-ideas masterclass library. Another AI wrote the course you are given. Your job is to decide whether it is genuinely worth publishing and charging attention for — not to be kind. Penalize filler, vague claims, invented facts, fake-sounding citations, repetition, thin sections, generic "intro to X" content, and interactivity that is decorative rather than teaching. Reward concrete mechanisms, specific named examples, accurate history, honest framing of fringe material (clearly separating established fact, scholarly debate and belief/practice), and interactions that test understanding. Reply with ONE JSON object and nothing else.`
+const SYSTEM = `You are a hard-to-impress editorial reviewer for a paid esoteric-and-ideas masterclass library. Another AI wrote the course you are given. Your job is to decide whether it is genuinely worth publishing and charging attention for — not to be kind. The standard is CORRECTNESS FIRST, then genuine hidden knowledge: material that is obscure yet verifiable (primary texts, original-language terms, neglected figures, real scholarly disputes) rather than textbook summary or vague mystique. Treat any wrong, unverifiable or invented name, date, quote, title or attribution as a blocker and say what the correct fact is. Penalize filler, vague claims, invented facts, fake-sounding citations, repetition, thin sections, generic "intro to X" content, and interactivity that is decorative rather than teaching. Reward concrete mechanisms, specific named examples, accurate history, honest framing of fringe material (clearly separating established fact, scholarly debate and belief/practice), and interactions that test understanding. Reply with ONE JSON object and nothing else.`
 
 function stats(html: string) {
   const doc = new DOMParser().parseFromString(html, 'text/html')
@@ -58,7 +58,7 @@ FULL VISIBLE TEXT OF THE COURSE:
 ${body}
 """
 
-Judge: is this worth the value it claims? Score each 0-10: accuracy (facts, no fabrication), depth (substance vs filler), originality (non-generic insight), structure (pedagogical flow, no repetition), interactivity (does it teach, not decorate). Then valueScore 0-100 overall ("would a discerning reader feel they got their time's worth?"). verdict: "publish" only if you would put your name on it; "revise" if fixable; "reject" if the premise or execution is poor. List concrete issues; severity "blocker" = factual fabrication, truncation, broken or empty sections, or content that misrepresents itself.
+Judge: is this worth the value it claims? Score each 0-10: accuracy (every checkable claim correct; any fabrication caps this at 4), insight (non-obvious, verifiable hidden knowledge beyond an introductory summary), depth (substance vs filler), originality (non-generic insight), structure (pedagogical flow, no repetition), interactivity (does it teach, not decorate). Then valueScore 0-100 overall ("would a discerning reader feel they got their time's worth?"). verdict: "publish" only if you would put your name on it; "revise" if fixable; "reject" if the premise or execution is poor. List concrete issues; severity "blocker" = factual fabrication, truncation, broken or empty sections, or content that misrepresents itself.
 
 Also classify it for the library catalogue:
 Categories (exactly one id):
@@ -69,7 +69,7 @@ Concept vocabulary (choose 2-4 ids that genuinely apply):
 ${tax.concepts.map((c) => `- ${c.id}: ${c.definition}`).join('\n')}
 
 Return JSON exactly:
-{"scores":{"accuracy":0,"depth":0,"originality":0,"structure":0,"interactivity":0},"valueScore":0,"verdict":"publish|revise|reject","worthIt":"one blunt sentence","strengths":["..."],"issues":[{"severity":"blocker|major|minor","text":"..."}],"category":"id","format":"id","kicker":"short lowercase tag like 'physics · six parts'","blurb":"card copy, one sentence, max 25 words","covers":["5-7 short bullet topics the course covers"],"concepts":[{"id":"concept-id","angle":"how THIS course uses it, max 14 words"}]}`
+{"scores":{"accuracy":0,"insight":0,"depth":0,"originality":0,"structure":0,"interactivity":0},"valueScore":0,"verdict":"publish|revise|reject","worthIt":"one blunt sentence","strengths":["..."],"issues":[{"severity":"blocker|major|minor","text":"specific location + what is wrong + the correct fact or the fix"}],"category":"id","format":"id","kicker":"short lowercase tag like 'physics · six parts'","blurb":"card copy, one sentence, max 25 words","covers":["5-7 short bullet topics the course covers"],"concepts":[{"id":"concept-id","angle":"how THIS course uses it, max 14 words"}]}`
 
   const raw = await chatOnce({
     provider: reviewer.provider,
@@ -87,6 +87,7 @@ Return JSON exactly:
 
   const scores = {
     accuracy: clamp(j.scores?.accuracy, 0, 10),
+    insight: clamp(j.scores?.insight, 0, 10),
     depth: clamp(j.scores?.depth, 0, 10),
     originality: clamp(j.scores?.originality, 0, 10),
     structure: clamp(j.scores?.structure, 0, 10),
@@ -109,6 +110,8 @@ Return JSON exactly:
     verdict === 'publish' &&
     valueScore >= threshold &&
     !issues.some((i: any) => i.severity === 'blocker') &&
+    scores.accuracy >= 7 &&
+    scores.insight >= 6 &&
     Math.min(...Object.values(scores)) >= 5
 
   return {

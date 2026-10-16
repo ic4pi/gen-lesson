@@ -55,7 +55,7 @@ export interface ReviewResult {
   /** hash of the html that was reviewed — edits after review invalidate it */
   htmlLength: number
   valueScore: number
-  scores: Record<'accuracy' | 'depth' | 'originality' | 'structure' | 'interactivity', number>
+  scores: Record<'accuracy' | 'insight' | 'depth' | 'originality' | 'structure' | 'interactivity', number>
   verdict: 'publish' | 'revise' | 'reject'
   worthIt: string
   strengths: string[]
@@ -79,6 +79,7 @@ export interface PublishConfig {
   token: string
   reviewerModelId: string // "provider:model"
   threshold: number
+  maxRounds: number // auto-rebuild attempts after a failed review
 }
 
 export type Keys = Record<ProviderId, string>

@@ -13,6 +13,7 @@ interface Props {
   reviewerLabel: string | null
   hexpoRepo: string
   onReview: () => Promise<void>
+  onAutoFix: () => Promise<void>
   onPublish: () => Promise<void>
 }
 
@@ -22,7 +23,7 @@ const PHASE_LABEL: Record<string, string> = {
   assembling: 'Assembling document',
 }
 
-export default function OutputPane({ gen, course, reviewerLabel, hexpoRepo, onReview, onPublish }: Props) {
+export default function OutputPane({ gen, course, reviewerLabel, hexpoRepo, onReview, onAutoFix, onPublish }: Props) {
   const busy = gen.phase === 'planning' || gen.phase === 'writing' || gen.phase === 'assembling'
 
   return (
@@ -101,7 +102,7 @@ export default function OutputPane({ gen, course, reviewerLabel, hexpoRepo, onRe
             </pre>
           </TabsContent>
         </Tabs>
-        <PublishBar course={course} hexpoRepo={hexpoRepo} reviewerLabel={reviewerLabel} onReview={onReview} onPublish={onPublish} />
+        <PublishBar course={course} hexpoRepo={hexpoRepo} reviewerLabel={reviewerLabel} onReview={onReview} onAutoFix={onAutoFix} onPublish={onPublish} />
         </>
       ) : (
         <EmptyState />

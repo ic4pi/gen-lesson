@@ -147,7 +147,16 @@ export default function SettingsDialog({ open, onOpenChange, keys, setKeys, mode
               onChange={(e) => setPublish({ ...publish, threshold: Number(e.target.value) || 75 })}
               className="h-8 w-20 border-input bg-secondary font-mono2 text-xs"
             />
-            <span className="text-[11px] text-muted-foreground">/100, and no blocker issues</span>
+            <span className="text-[11px] text-muted-foreground">/100, no blockers</span>
+            <Label className="ml-3 text-[11px] text-muted-foreground">Rebuilds</Label>
+            <Input
+              type="number"
+              min={1}
+              max={6}
+              value={publish.maxRounds}
+              onChange={(e) => setPublish({ ...publish, maxRounds: Number(e.target.value) || 3 })}
+              className="h-8 w-16 border-input bg-secondary font-mono2 text-xs"
+            />
           </div>
         </div>
       </DialogContent>

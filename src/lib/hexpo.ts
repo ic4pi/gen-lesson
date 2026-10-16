@@ -20,6 +20,7 @@ export const DEFAULT_PUBLISH: PublishConfig = {
   token: '',
   reviewerModelId: '',
   threshold: 75,
+  maxRounds: 3,
 }
 
 const API = 'https://api.github.com'
