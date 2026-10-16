@@ -108,7 +108,7 @@ export function validateForHexpo(html: string, slug: string, minWords = 1800): s
   if (/\b(fetch\s*\(|XMLHttpRequest|WebSocket\s*\(|navigator\.sendBeacon)/.test(html))
     p.push('network calls (fetch/XHR/WebSocket/sendBeacon) not allowed')
   for (const m of html.matchAll(/<link\b[^>]*href=["'](https?:[^"']+)["']/gi)) {
-    if (!/^https:\/\/fonts\.(googleapis|gstatic)\.com\//.test(m[1]))
+    if (!/^https:\/\/fonts\.(googleapis|gstatic)\.com(\/|$)/.test(m[1]))
       p.push(`external stylesheet/link not allowed: ${m[1]}`)
   }
   if (/localStorage/.test(html) && !html.includes(`hx:${slug}:`))
