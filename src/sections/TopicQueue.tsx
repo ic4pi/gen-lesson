@@ -63,7 +63,10 @@ export default function TopicQueue(p: Props) {
   }, [numbered])
   useEffect(() => {
     const present = Object.keys(waveCounts).map(Number)
-    if (present.length && !waves.some((w) => present.includes(w))) setWaves([Math.min(...present)])
+    if (present.length && !waves.some((w) => present.includes(w))) {
+      const early = present.filter((w) => w < 1)
+      setWaves(early.length ? early : [Math.min(...present)])
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waveCounts])
   const pickedCount = numbered.filter((x) => waves.includes(x.meta!.wave ?? 0)).length
