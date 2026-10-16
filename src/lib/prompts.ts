@@ -50,23 +50,51 @@ const STYLING_NOTE = `STYLING — A SEPARATE DESIGNER WILL RESTYLE YOUR PAGE AFT
 - Build it so a designer can restyle it safely: semantic HTML (header, nav, main, section, article, aside, figure, details); one class per component role (.hero, .chapter, .callout, .pullquote, .card, .quiz, .flip, .tabs, .accordion, .journal, .glossary, .diagram); every colour, font and spacing value as a CSS custom property on :root; JavaScript finds elements by id or data- attributes, never by styling classes.
 - Spend your effort on: factual depth, correct and complete content, and interactive features that genuinely work.`
 
-const FUNCTION_SPEC = `REQUIRED STRUCTURE:
+const FUNC_STRUCTURE = `REQUIRED STRUCTURE:
 1. A fixed scroll-progress bar at the very top.
 2. A hero: course title, part designation if any, estimated reading time, a one-paragraph promise, and 3–4 concrete outcomes ("what you will walk away with") — with the signature animated visual described below.
 3. Sticky chapter navigation (side rail or sidebar on desktop, collapsible on mobile) with active-section highlighting via IntersectionObserver.
 4. 6–9 chapters of SUBSTANTIVE teaching content — each at least 450 words, the whole course at least 4500 words. Real depth: mechanisms, history, named people, texts, traditions, dates and specifics where they exist; the strongest counter-view or limitation stated honestly. Zero filler, zero placeholder text; every paragraph teaches something concrete. Where material is historically established versus modern reconstruction versus personal gnosis/speculation, say which.
 5. Interactivity — at least SIX different kinds, all genuinely working: (a) at least TWO custom topic-specific interactive diagrams or simulations built with canvas or SVG that respond to pointer, slider or click (a correspondences wheel you can rotate, a Tree-of-Life you can hover, a planetary-hours calculator, a sigil-forging canvas, a timeline scrubber — whatever fits the subject); (b) self-check quizzes with instant right/wrong feedback and explanation; (c) flip cards or click-to-reveal for key concepts; (d) tabbed or toggled comparisons; (e) a reflection journal: textareas whose entries save to localStorage with Save / Clear and a visible history; (f) a persistent checklist/progress tracker that updates the progress bar; (g) accordion deep-dive drawers; (h) hover-definition terms for jargon.
-6. A "Key Takeaways" section distilling the course, and a glossary of key terms with plain-language definitions.
+6. A "Key Takeaways" section distilling the course, and a glossary of key terms with plain-language definitions.`
 
-MOTION (the course must feel alive, never static):
+const FUNC_MOTION_FX = `MOTION (the course must feel alive, never static):
 - Build the signature hero animation yourself in canvas or SVG (self-drawing line work, orbiting or drifting particles, rotating geometry, a living diagram) — richly detailed, topic-specific, reacting to the pointer where natural. Add refined hover micro-interactions on cards, buttons, terms and nav; animate chapter-number or heading flourishes; animate diagrams as they scroll into view.
 - THE FOUNDRY INJECTS THESE AUTOMATICALLY — DO NOT BUILD THEM: the animated black background field, the cinematic title opening, scroll-reveal fades, and the "Motion" on/off switch. Do not add a loading overlay, a motion toggle, or a full-page background of your own.
-- The Foundry's Motion switch toggles the class "no-motion" on <html>. Everything you animate must obey it: write CSS as html.no-motion * { animation: none !important; transition: none !important; }, and make EVERY requestAnimationFrame / setInterval loop check document.documentElement.classList.contains('no-motion') each frame (draw one static frame instead when off), and watch for the class changing with a MutationObserver so loops resume when turned back on. Also respect prefers-reduced-motion.
+- The Foundry's Motion switch toggles the class "no-motion" on <html>. Everything you animate must obey it: write CSS as html.no-motion * { animation: none !important; transition: none !important; }, and make EVERY requestAnimationFrame / setInterval loop check document.documentElement.classList.contains('no-motion') each frame (draw one static frame instead when off), and watch for the class changing with a MutationObserver so loops resume when turned back on. Also respect prefers-reduced-motion.`
 
-ENGINEERING:
+const FUNC_MOTION_OWN = `MOTION (the course must feel alive, never static):
+- Build every animation yourself: an ambient full-page canvas background specific to the subject (drifting stars, fractal bloom, sacred-geometry lattice, embers, runes: your choice), a soft cursor glow that follows the pointer, a signature hero animation in canvas or SVG, hover micro-interactions on cards, buttons and nav, and scroll-triggered reveals via IntersectionObserver.
+- Add a pill-style "Motion" on/off switch fixed at the top-right that toggles the class "no-motion" on <html> (default ON, persisted in localStorage). Write CSS as html.no-motion * { animation: none !important; transition: none !important; }, make EVERY requestAnimationFrame / setInterval loop check document.documentElement.classList.contains('no-motion') (draw one static frame instead when off) and watch the class with a MutationObserver so loops resume. Also respect prefers-reduced-motion.`
+
+const FUNC_ENGINEERING = `ENGINEERING:
 - Fully mobile responsive, no horizontal scroll, touch targets ≥ 44px, keyboard-accessible controls with visible focus.
 - Must work opened directly as a local .html file — no build step, no network dependency beyond Google Fonts.
 - Complete and unabridged: never write "etc.", "more here" or skeletons. Finish every chapter and close every tag.`
+
+const funcSpec = (fx: boolean) => `${FUNC_STRUCTURE}\n\n${fx ? FUNC_MOTION_FX : FUNC_MOTION_OWN}\n\n${FUNC_ENGINEERING}`
+
+const SINGLE_SPEC = `YOU ARE AUTHOR, ENGINEER AND ART DIRECTOR IN ONE. The page you write is a finished, bespoke, immersive digital artifact for THIS subject, not a template. Content and craft carry equal weight.
+
+ART DIRECTION:
+- Invent a palette native to the subject: a near-black "void" base tinted toward the subject, 3–4 vivid accent colours, and glow shadows, all as CSS custom properties on :root (e.g. --void, --deep, --accent-a, --accent-b, --accent-c, --glow-a, --glow-b, --text, --muted). Use gradient text and layered glows on key headings and numerals. The page is always dark: never a white or pale page.
+- Typography: exactly two Google Fonts (a distinctive display face and a readable body face) chosen for the subject, optionally a monospace for labels. Real hierarchy: tiny letter-spaced section labels ("03 — Interactive Visualizer"), huge glowing display titles, generous whitespace, body 17px+, reading width about 70ch.
+- A full-page ambient canvas background and a soft cursor glow specific to the subject (never generic).
+- Components should feel hand-made: glass-and-hairline cards, glowing hover states, animated meters and progress bars, drawers and tabs with polished transitions.
+
+THE SIGNATURE INSTRUMENT (the most important part):
+- Build at least TWO original interactive instruments from scratch, native to the subject, in canvas or SVG with real logic behind them: a graph you can scrub and inspect on hover, a wheel or Tree you can spin or hover, a simulator driven by sliders, a generator, a calculator, a chart you cast. They must respond live to buttons, sliders and the pointer, have view controls (e.g. History / Century / Zoom, Animate on/off), and show a live readout (a meter, a value, a label). These are not decoration; they teach the idea.
+
+STUDY LAYER:
+- A tabbed "Study Guide" (for example Concepts / Glossary / Roadmap) with expandable terms.
+- A quiz of 8–10 questions with a progress bar, instant right/wrong feedback with an explanation, a final score screen and restart.
+- Reflective exercises with textareas whose entries save to localStorage with Save and Clear, a visible saved history, an "Export journal" download, and a chapter-progress tracker that fills the scroll bar.
+- Sticky navigation with active-section highlighting.`
+
+const refBlock = (reference?: string | null) =>
+  reference
+    ? `REFERENCE PAGE — MATCH ITS LEVEL OF CRAFT. Below is the CSS and JavaScript of a finished page the creator loves, with its prose shortened. Study how it builds its palette tokens, glows, ambient canvas, custom instruments, tabs, quiz, saved exercises and animation. Reach that same level of visual richness and interactivity for the NEW topic. Do NOT copy its topic, wording, colours, layout or code; invent a fresh palette, fresh instruments and fresh structure that suit the new subject.\n\n<reference>\n${reference}\n</reference>`
+    : ''
 
 export function designPrompt(opts: { skeleton: string; title: string; rejected?: string; visual?: VisualDirection | null }): string {
   return `You are a world-class art director and front-end designer. Below is the STRUCTURE of a finished, working masterclass page (long text is elided with "…", but all tags, classes, ids, the writer's CSS and the page's scripts are complete). The content and code are final and you will not touch them. Your job is to write the visual design layer that makes this the most beautiful, immersive, premium course page the reader has ever seen: award-winning editorial site crossed with a cinematic interactive experience. Confident typography, dramatic hierarchy, rich layered depth, tasteful glow and texture, elegant hover and focus states, refined spacing, beautiful pull quotes, callouts, cards, quizzes, flip cards, accordions, tabs and diagrams, and a signature hero visual unique to the subject.
@@ -110,8 +138,13 @@ export function coursePrompt(opts: {
   part?: number | null
   previousParts?: Course[]
   visual?: VisualDirection | null
+  mode?: 'single' | 'two-stage'
+  reference?: string | null
+  fx?: boolean
 }): string {
   const { topic, notes, series, part, previousParts, visual } = opts
+  const mode = opts.mode ?? 'two-stage'
+  const fx = opts.fx ?? true
 
   let seriesBlock = ''
   if (series && part) {
@@ -138,7 +171,7 @@ Continuity rules:
 - End with a short "Where we go next" section pointing at Part ${part + 1 <= series.plan.length ? `${part + 1} — "${series.plan.find((p) => p.part === part + 1)?.title ?? ''}"` : 'the reader\'s next steps beyond this series'}.`
   }
 
-  return `You are the Foundry — a masterclass author and engineer in one. Build a complete, accurate, fully working interactive masterclass as a single HTML file.
+  return `You are the Foundry — a masterclass author${mode === 'single' ? ', engineer and art director' : ' and engineer'} in one. Build a complete, accurate, fully working interactive masterclass as a single HTML file.
 
 TOPIC: ${topic}
 ${seriesBlock}
@@ -147,9 +180,9 @@ ${OUTPUT_CONTRACT}
 
 ${ACCURACY_SPEC}
 
-${STYLING_NOTE}
+${mode === 'single' ? `${SINGLE_SPEC}\n\n${visual ? `ART DIRECTION FROM THE CREATIVE DIRECTOR (follow it; the palette stays dark):\n${visualText(visual)}\n\n` : ''}${refBlock(opts.reference)}` : STYLING_NOTE}
 
-${FUNCTION_SPEC}
+${funcSpec(fx)}
 ${visual && visual.visualizations.length ? `\nCUSTOM DATA VISUALIZATIONS YOU MUST BUILD (working code, plain styling; the designer will beautify them; give each a clear id and class):\n${visual.visualizations.map((x) => `- ${x.name} (${x.tech}): shows ${x.shows}; interaction: ${x.interaction}`).join('\n')}\n` : ''}
 Begin now. Output the HTML document and nothing else.`
 }

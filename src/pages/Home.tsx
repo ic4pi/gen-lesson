@@ -15,6 +15,7 @@ import { parseContents } from '@/lib/parseContents'
 import { enhanceCourseHtml, hasFx, stripFx } from '@/lib/fx'
 import { designCourse } from '@/lib/design'
 import { makeBrief } from '@/lib/brief'
+import { loadReference, REFERENCE_OPTIONS } from '@/lib/references'
 import {
   CURRICULUM_SYSTEM,
   rebuildPrompt,
@@ -49,6 +50,9 @@ const LS_KEYS = 'mf.keys'
 const LS_MOTION = 'mf.motion'
 const LS_MODEL = 'mf.model'
 const LS_DESIGNER = 'mf.designer'
+const LS_BUILDMODE = 'mf.buildMode'
+const LS_REF = 'mf.ref'
+const LS_FX = 'mf.fx'
 const LS_CUSTOM = 'mf.customModels'
 const LS_SUBJECT = 'mf.subject'
 const LS_SUGGESTIONS = 'mf.suggestions'
@@ -155,6 +159,20 @@ export default function Home() {
   }, [designerId])
   const designerRef = useRef(designerId)
   designerRef.current = designerId
+  const [buildMode, setBuildMode] = useState<'single' | 'two-stage'>(
+    () => (localStorage.getItem(LS_BUILDMODE) as 'single' | 'two-stage') || 'single',
+  )
+  const [refId, setRefId] = useState(() => localStorage.getItem(LS_REF) ?? REFERENCE_OPTIONS[0]?.id ?? 'none')
+  const [fxOn, setFxOn] = useState(() => localStorage.getItem(LS_FX) === 'on')
+  useEffect(() => localStorage.setItem(LS_BUILDMODE, buildMode), [buildMode])
+  useEffect(() => localStorage.setItem(LS_REF, refId), [refId])
+  useEffect(() => localStorage.setItem(LS_FX, fxOn ? 'on' : 'off'), [fxOn])
+  const buildModeRef = useRef(buildMode)
+  buildModeRef.current = buildMode
+  const refIdRef = useRef(refId)
+  refIdRef.current = refId
+  const fxRef = useRef(fxOn)
+  fxRef.current = fxOn
   const modelRef = useRef(modelId)
   modelRef.current = modelId
   const keysRef = useRef(keys)
@@ -266,10 +284,11 @@ export default function Home() {
     meta: { title: string; kicker?: string },
     signal?: AbortSignal,
     visual?: VisualDirection | null,
+    forceDesigner = false,
   ): Promise<{ html: string; designedBy?: string }> {
-    const fx = (h: string) => enhanceCourseHtml(h, meta)
+    const fx = (h: string) => (fxRef.current ? enhanceCourseHtml(h, meta) : h)
     const designer = designerModels.find((m) => `${m.provider}:${m.id}` === designerRef.current)
-    if (!designer) return { html: fx(raw) }
+    if (!designer || (buildModeRef.current === 'single' && !forceDesigner)) return { html: fx(raw) }
     const apiKey = keysRef.current[designer.provider].trim()
     if (!apiKey) {
       toast.warning(`No ${PROVIDERS[designer.provider].label} key for the designer — keeping the plain build`)
@@ -421,6 +440,8 @@ export default function Home() {
       }
       setGen((g) => ({ ...g, phase: 'writing', message: '' }))
 
+      const referenceText = buildModeRef.current === 'single' ? await loadReference(refIdRef.current) : null
+
       // ── write the course ──
       let acc = ''
       for await (const delta of streamChat({
@@ -437,6 +458,9 @@ export default function Home() {
               part,
               previousParts,
               visual,
+              mode: buildModeRef.current,
+              reference: referenceText,
+              fx: fxRef.current,
             }),
           },
         ],
@@ -819,7 +843,7 @@ export default function Home() {
       }
       const rebuilt: Course = {
         ...cur,
-        html: enhanceCourseHtml(parsed.html, fxMeta({ ...cur, title: parsed.title ?? cur.title })),
+        html: fxRef.current ? enhanceCourseHtml(parsed.html, fxMeta({ ...cur, title: parsed.title ?? cur.title })) : parsed.html,
         rawHtml: parsed.html,
         designedBy: undefined,
         title: parsed.title ?? cur.title,
@@ -832,7 +856,7 @@ export default function Home() {
       if (cur.review!.valueScore >= best.review!.valueScore || cur.review!.passed) best = cur
     }
     if (best !== cur) await saveCourse(best) // a later rebuild scored worse — restore the best one
-    if (best.rawHtml && !best.designedBy && best.review!.passed && designerRef.current !== 'none') {
+    if (best.rawHtml && !best.designedBy && best.review!.passed && buildModeRef.current === 'two-stage' && designerRef.current !== 'none') {
       const fin = await finishHtml(best.rawHtml, fxMeta(best), undefined, best.visual)
       if (fin.designedBy) {
         // content was verified unchanged by the designer check, so the review still applies
@@ -853,7 +877,7 @@ export default function Home() {
     if (!current) return
     if (designerRef.current === 'none') throw new Error('Pick a designer model first')
     const raw = current.rawHtml ?? stripFx(current.html)
-    const fin = await finishHtml(raw, fxMeta(current), undefined, current.visual)
+    const fin = await finishHtml(raw, fxMeta(current), undefined, current.visual, true)
     setGen(IDLE)
     if (!fin.designedBy) return
     const next: Course = {
@@ -1007,6 +1031,13 @@ export default function Home() {
               modelId={modelId}
               setModelId={setModelId}
               designerModels={designerModels}
+              buildMode={buildMode}
+              setBuildMode={setBuildMode}
+              refId={refId}
+              setRefId={setRefId}
+              refOptions={REFERENCE_OPTIONS}
+              fxOn={fxOn}
+              setFxOn={setFxOn}
               designerId={designerId}
               setDesignerId={setDesignerId}
               onAddCustom={addCustomModel}

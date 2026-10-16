@@ -29,6 +29,13 @@ interface Props {
   modelId: string
   setModelId: (v: string) => void
   designerModels: ModelOption[]
+  buildMode: 'single' | 'two-stage'
+  setBuildMode: (v: 'single' | 'two-stage') => void
+  refId: string
+  setRefId: (v: string) => void
+  refOptions: { id: string; label: string }[]
+  fxOn: boolean
+  setFxOn: (v: boolean) => void
   designerId: string
   setDesignerId: (v: string) => void
   onAddCustom: (m: ModelOption) => void
@@ -154,9 +161,55 @@ export default function Composer(p: Props) {
         )}
       </div>
 
+      {/* Build mode + reference */}
+      <div className="space-y-2 rise rise-3">
+        <Label className="label-mono">Build mode</Label>
+        <Select value={p.buildMode} onValueChange={(v) => p.setBuildMode(v as 'single' | 'two-stage')} disabled={busy}>
+          <SelectTrigger className={inputCls}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="single">
+              <span className="text-foreground">Single pass — the writer builds the whole designed page (recommended)</span>
+            </SelectItem>
+            <SelectItem value="two-stage">
+              <span className="text-foreground">Two-stage — plain build, then a designer model styles it</span>
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        {p.buildMode === 'single' && (
+          <>
+            <Label className="label-mono">Style reference</Label>
+            <Select value={p.refId} onValueChange={p.setRefId} disabled={busy}>
+              <SelectTrigger className={inputCls}>
+                <SelectValue placeholder="Choose a reference page" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">
+                  <span className="text-foreground">None</span>
+                </SelectItem>
+                {p.refOptions.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    <span className="text-foreground">{r.label}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              The writer gets this page's CSS and scripts and is told to reach the same craft with a
+              new palette and new custom instruments for the topic.
+            </p>
+          </>
+        )}
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+          <input type="checkbox" checked={p.fxOn} onChange={(e) => p.setFxOn(e.target.checked)} disabled={busy} />
+          Add the Foundry effects layer (forced black field, title intro, Motion switch)
+        </label>
+      </div>
+
       {/* Designer picker */}
       <div className="space-y-2 rise rise-3">
-        <Label className="label-mono">Designer (restyles the finished course)</Label>
+        <Label className="label-mono">Designer (two-stage mode and Restyle)</Label>
         <Select value={p.designerId} onValueChange={p.setDesignerId} disabled={busy}>
           <SelectTrigger className={inputCls}>
             <SelectValue placeholder="Choose a designer" />
