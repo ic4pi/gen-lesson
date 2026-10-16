@@ -1,7 +1,10 @@
 // Turns a pasted contents page / outline / list into topic candidates.
+import type { DecimalMeta } from '@/types'
+
 export interface ParsedTopic {
   topic: string
   notes: string
+  meta?: DecimalMeta
 }
 
 const SPLIT = /\s+[—–]\s+|\s+-\s+/
@@ -11,7 +14,31 @@ function fromStructured(text: string): ParsedTopic[] | null {
   if (t.startsWith('[') || t.startsWith('{')) {
     try {
       let j = JSON.parse(t)
-      if (!Array.isArray(j)) j = j.topics ?? j.items ?? []
+      if (!Array.isArray(j)) j = j.items ?? j.topics ?? []
+      let rows = (j as any[]).filter((x) => x && typeof x === 'object' && x.number !== undefined && x.title)
+      if (rows.length) {
+        // numbered build queue (Esoteric Decimal System): honour status, wave and order
+        rows = rows.filter((x) => !x.status || ['pending', 'failed', 'in_progress'].includes(String(x.status)))
+        rows.sort(
+          (a, b) =>
+            (Number(a.wave) || 9) - (Number(b.wave) || 9) ||
+            (Number(a.order) || 1e9) - (Number(b.order) || 1e9) ||
+            String(a.number).localeCompare(String(b.number)),
+        )
+        return rows.map((x) => ({
+          topic: String(x.title).trim(),
+          notes: '',
+          meta: {
+            number: String(x.number),
+            filename: String(x.filename ?? '').replace(/[^a-z0-9._-]/gi, '-'),
+            cls: String(x.class ?? ''),
+            division: String(x.division ?? ''),
+            kind: String(x.kind ?? 'section masterclass'),
+            wave: Number(x.wave) || undefined,
+            tier: Number(x.tier) || undefined,
+          },
+        }))
+      }
       const out = (j as any[])
         .map((x) =>
           typeof x === 'string'
@@ -46,7 +73,10 @@ export function parseContents(text: string): ParsedTopic[] {
   const structured = fromStructured(text)
   if (structured) {
     const seen = new Set<string>()
-    return structured.filter((x) => !seen.has(x.topic.toLowerCase()) && !!seen.add(x.topic.toLowerCase()))
+    return structured.filter((x) => {
+      const k = x.meta ? `#${x.meta.number}` : x.topic.toLowerCase()
+      return !seen.has(k) && !!seen.add(k)
+    })
   }
   const out: ParsedTopic[] = []
   const seen = new Set<string>()

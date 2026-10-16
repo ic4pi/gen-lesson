@@ -166,7 +166,8 @@ export async function publishCourse(
 
     // stable id: reuse ours on re-publish; otherwise a unique slug
     const prior = course.published
-    let id = prior?.id ?? slugify(course.title)
+    const m = course.meta
+    let id = prior?.id ?? (m?.filename ? m.filename.replace(/\.html$/i, '') : slugify(course.title))
     if (!prior) {
       const base = id
       let n = 2
@@ -194,7 +195,7 @@ export async function publishCourse(
       category: review.meta.category,
       format: review.meta.format,
       title: course.title,
-      kicker: review.meta.kicker,
+      kicker: m ? `${m.number} · ${m.division.replace(/^\d+\s*/, '')}` : review.meta.kicker,
       blurb: review.meta.blurb,
       covers: review.meta.covers,
       concepts: review.meta.concepts.filter((c) => tax.concepts.some((x) => x.id === c.id)),
@@ -204,6 +205,7 @@ export async function publishCourse(
       source: 'masterclass-foundry',
       model: course.modelId,
       reviewScore: review.valueScore,
+      ...(m ? { number: m.number, decimalClass: m.cls, decimalDivision: m.division, decimalKind: m.kind, wave: m.wave } : {}),
       words: visibleWords(html),
       bytes: new TextEncoder().encode(html).length,
     }

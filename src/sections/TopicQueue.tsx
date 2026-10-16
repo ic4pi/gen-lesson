@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { parseContents } from '@/lib/parseContents'
 import { ArrowDown, ArrowUp, Layers, FileText, Lightbulb, ListPlus, Play, RotateCcw, Square, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -20,7 +21,7 @@ interface Props {
   busy: boolean
   onSuggest: () => void
   onAddToQueue: (mode: QueueMode) => void
-  onImport: (text: string, mode: QueueMode) => number | void
+  onImport: (text: string, mode: QueueMode, waves?: number[]) => number | void
   onRunQueue: () => void
   onStopQueue: () => void
   onMove: (id: string, dir: -1 | 1) => void
@@ -53,6 +54,14 @@ export default function TopicQueue(p: Props) {
   const [paste, setPaste] = useState('')
   const [mode, setMode] = useState<QueueMode>('series')
   const fileRef = useRef<HTMLInputElement>(null)
+  const [waves, setWaves] = useState<number[]>([1])
+  const numbered = useMemo(() => parseContents(paste).filter((x) => x.meta), [paste])
+  const waveCounts = useMemo(() => {
+    const c: Record<number, number> = {}
+    for (const x of numbered) c[x.meta!.wave ?? 0] = (c[x.meta!.wave ?? 0] ?? 0) + 1
+    return c
+  }, [numbered])
+  const pickedCount = numbered.filter((x) => waves.includes(x.meta!.wave ?? 0)).length
   const checked = p.suggestions.filter((s) => s.checked)
   const toggle = (id: string, v: boolean) =>
     p.setSuggestions(p.suggestions.map((s) => (s.id === id ? { ...s, checked: v } : s)))
@@ -75,7 +84,7 @@ export default function TopicQueue(p: Props) {
           </button>
         </div>
         <div className="min-w-0 flex-1">
-          <div>{q.topic}</div>
+          <div>{q.meta && <span className="mr-2 font-mono2 text-xs text-primary">{q.meta.number}</span>}{q.topic}</div>
           {running && <div className="text-xs text-primary">building… {q.progress}</div>}
           {q.status === 'failed' && <div className="text-xs text-destructive">{q.error}</div>}
           {q.status === 'pending' && q.progress && <div className="text-xs text-muted-foreground">{q.progress}</div>}
@@ -132,15 +141,41 @@ export default function TopicQueue(p: Props) {
             <Button variant="outline" className="w-full" onClick={() => fileRef.current?.click()}>
               <Upload className="mr-2 h-4 w-4" /> Load a file (.txt .md .csv .json)
             </Button>
-            <ModeSelect value={mode} onChange={setMode} />
+            {numbered.length > 0 ? (
+              <div className="space-y-2 rounded-md border border-border bg-secondary/40 p-3">
+                <p className="text-xs text-muted-foreground">
+                  Numbered build queue detected — {numbered.length} items. Each builds as one standalone
+                  masterclass, in wave then order. Choose which waves to add:
+                </p>
+                <div className="flex flex-wrap gap-4">
+                  {Object.keys(waveCounts)
+                    .map(Number)
+                    .sort()
+                    .map((w) => (
+                      <label key={w} className="flex cursor-pointer items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={waves.includes(w)}
+                          onCheckedChange={(v) => setWaves(v === true ? [...waves, w] : waves.filter((x) => x !== w))}
+                        />
+                        Wave {w} <span className="text-xs text-muted-foreground">({waveCounts[w]})</span>
+                      </label>
+                    ))}
+                </div>
+              </div>
+            ) : (
+              <ModeSelect value={mode} onChange={setMode} />
+            )}
             <Button
               className="w-full"
-              disabled={!paste.trim()}
+              disabled={!paste.trim() || (numbered.length > 0 && pickedCount === 0)}
               onClick={() => {
-                if (p.onImport(paste, mode)) setPaste('')
+                if (p.onImport(paste, mode, numbered.length ? waves : undefined)) setPaste('')
               }}
             >
-              <ListPlus className="mr-2 h-4 w-4" /> Add to queue (skips what is already in your library)
+              <ListPlus className="mr-2 h-4 w-4" />
+              {numbered.length > 0
+                ? `Add ${pickedCount} to queue (skips numbers already built)`
+                : 'Add to queue (skips what is already in your library)'}
             </Button>
           </div>
 

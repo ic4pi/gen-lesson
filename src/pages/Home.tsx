@@ -42,6 +42,7 @@ import type {
   Series,
   Suggestion,
   VisualDirection,
+  DecimalMeta,
 } from '@/types'
 
 const LS_KEYS = 'mf.keys'
@@ -65,6 +66,7 @@ const LS_PUBLISH = 'mf.publish'
 interface GenOverride {
   topic: string
   notes: string
+  meta?: DecimalMeta
   mode?: 'standalone' | 'new'
   series?: Series
   previous?: Course[]
@@ -237,6 +239,26 @@ export default function Home() {
   }
 
   // ── generation orchestration ─────────────────────────────
+  /** Placement context for numbered (Esoteric Decimal System) items. */
+  function decimalNotes(m: DecimalMeta, title: string, queue: QueueItem[], library: Course[]): string {
+    const sibs = [
+      ...queue.filter((q) => q.meta?.division === m.division && q.meta.number !== m.number).map((q) => `${q.meta!.number} ${q.topic}`),
+      ...library.filter((c) => c.meta?.division === m.division && c.meta.number !== m.number).map((c) => `${c.meta!.number} ${c.title}`),
+    ]
+    const uniq = [...new Set(sibs)].sort()
+    const overview = /overview/i.test(m.kind)
+    return [
+      `LIBRARY PLACEMENT (Esoteric Decimal System): number ${m.number} · ${m.cls} › ${m.division} · ${m.kind}.`,
+      overview
+        ? `This is the OVERVIEW of its ${/class/i.test(m.kind) ? 'class' : 'division'}: map the whole field, teach the foundations and orientation, and point forward to the sibling masterclasses below, which each get their own full masterclass, so do not teach them in full here.`
+        : `This is ONE focused section within "${m.division}": teach "${title}" in real depth with practical specificity, and do not re-teach what the sibling masterclasses cover; cross-reference them by title where useful.`,
+      uniq.length ? `Sibling masterclasses in this division:\n${uniq.map((x) => `- ${x}`).join('\n')}` : '',
+      'Check what the existing library already says on this subject; build on it, never repeat it.',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
   /** Designer pass + Foundry fx. Never throws: on any failure the working undesigned page is kept. */
   async function finishHtml(
     raw: string,
@@ -318,6 +340,8 @@ export default function Home() {
       let previousParts: Course[] = []
       let effTopic = t
       let effNotes = ov ? ov.notes : notes
+      const dmeta = ov?.meta
+      if (dmeta) effNotes = decimalNotes(dmeta, t, queueRef.current, coursesRef.current)
 
       if (existing) {
         series = existing
@@ -437,7 +461,11 @@ export default function Home() {
         parsed.html,
         {
           title: finalTitle,
-          kicker: series && part ? `Part ${part} of ${series.plan.length} · ${series.title}` : undefined,
+          kicker: dmeta
+            ? `${dmeta.number} · ${dmeta.division.replace(/^\d+\s*/, '')}`
+            : series && part
+              ? `Part ${part} of ${series.plan.length} · ${series.title}`
+              : undefined,
         },
         abort.signal,
         visual,
@@ -454,6 +482,7 @@ export default function Home() {
         provider: model.provider,
         html,
         rawHtml: parsed.html,
+        meta: dmeta,
         visual: visual ?? undefined,
         designedBy: finished.designedBy,
         summary: parsed.summary,
@@ -540,12 +569,13 @@ export default function Home() {
   const patchItem = (id: string, patch: Partial<QueueItem>) =>
     updateQueue((q) => q.map((x) => (x.id === id ? { ...x, ...patch } : x)))
 
-  const newItem = (topic: string, notes: string, mode: QueueItem['mode']): QueueItem => ({
+  const newItem = (topic: string, notes: string, mode: QueueItem['mode'], meta?: DecimalMeta): QueueItem => ({
     id: uid(),
     topic,
     notes,
-    mode,
+    mode: meta ? 'standalone' : mode,
     status: 'pending',
+    meta,
   })
 
   function addSelectedToQueue(mode: QueueItem['mode']) {
@@ -555,15 +585,25 @@ export default function Home() {
     toast.success(`${picked.length} added to queue`)
   }
 
-  function importContents(text: string, mode: QueueItem['mode']) {
-    const parsed = parseContents(text)
+  function importContents(text: string, mode: QueueItem['mode'], waves?: number[]) {
+    const parsed = parseContents(text).filter((p) => !p.meta || !waves || waves.includes(p.meta.wave ?? 0))
     if (!parsed.length) {
       toast.error('Found no topics in that text')
       return 0
     }
+    const haveNumbers = new Set([
+      ...coursesRef.current.map((c) => c.meta?.number),
+      ...queueRef.current.map((q) => q.meta?.number),
+    ])
     const blocked = [...knownTitles(), ...queueRef.current.map((q) => q.topic)]
     const fresh: QueueItem[] = []
     for (const p of parsed) {
+      if (p.meta) {
+        // numbered items are identified by their decimal number, not their title
+        if (haveNumbers.has(p.meta.number)) continue
+        fresh.push(newItem(p.topic, p.notes, mode, p.meta))
+        continue
+      }
       if (isDuplicateTopic(p.topic, [...blocked, ...fresh.map((f) => f.topic)])) continue
       fresh.push(newItem(p.topic, p.notes, mode))
     }
@@ -610,7 +650,7 @@ export default function Home() {
   }
 
   async function processItem(item: QueueItem): Promise<boolean> {
-    if (item.mode === 'standalone') return !!(await genWithRetry({ topic: item.topic, notes: item.notes }))
+    if (item.mode === 'standalone') return !!(await genWithRetry({ topic: item.topic, notes: item.notes, meta: item.meta }))
 
     let series = item.seriesId ? (seriesRef.current.find((s) => s.id === item.seriesId) ?? null) : null
     let parts: Course[] = series ? coursesRef.current.filter((c) => c.seriesId === series!.id) : []

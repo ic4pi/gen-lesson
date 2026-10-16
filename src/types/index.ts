@@ -57,6 +57,7 @@ export interface Course {
   review?: ReviewResult
   /** writer's functional version, before the designer pass and Foundry fx */
   rawHtml?: string
+  meta?: DecimalMeta
   visual?: VisualDirection
   designedBy?: string
   published?: { id: string; file: string; at: number; commit: string }
@@ -126,6 +127,16 @@ export interface Suggestion {
   checked: boolean
 }
 
+export interface DecimalMeta {
+  number: string
+  filename: string
+  cls: string
+  division: string
+  kind: string
+  wave?: number
+  tier?: number
+}
+
 export type QueueMode = 'standalone' | 'series'
 export type QueueStatus = 'pending' | 'running' | 'done' | 'failed'
 
@@ -138,4 +149,5 @@ export interface QueueItem {
   seriesId?: string
   progress?: string
   error?: string
+  meta?: DecimalMeta
 }
