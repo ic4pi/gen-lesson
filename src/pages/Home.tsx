@@ -24,7 +24,19 @@ import {
   parseCurriculum,
 } from '@/lib/prompts'
 import { db, uid } from '@/lib/db'
-import type { Course, GenState, Keys, ModelOption, ProviderId, QueueItem, Series, Suggestion } from '@/types'
+import { DEFAULT_PUBLISH, loadHexpo, publishCourse } from '@/lib/hexpo'
+import { reviewCourse } from '@/lib/review'
+import type {
+  Course,
+  GenState,
+  Keys,
+  ModelOption,
+  ProviderId,
+  PublishConfig,
+  QueueItem,
+  Series,
+  Suggestion,
+} from '@/types'
 
 const LS_KEYS = 'mf.keys'
 const LS_MOTION = 'mf.motion'
@@ -41,6 +53,7 @@ function loadJson<T>(key: string, fallback: T): T {
     return fallback
   }
 }
+const LS_PUBLISH = 'mf.publish'
 
 const IDLE: GenState = { phase: 'idle', message: '', chars: 0, planPreview: null }
 
@@ -64,6 +77,18 @@ export default function Home() {
   const [modelId, setModelId] = useState(
     () => localStorage.getItem(LS_MODEL) ?? 'openrouter:anthropic/claude-sonnet-4.5',
   )
+
+  const [publish, setPublishState] = useState<PublishConfig>(() => {
+    try {
+      return { ...DEFAULT_PUBLISH, ...JSON.parse(localStorage.getItem(LS_PUBLISH) ?? '{}') }
+    } catch {
+      return DEFAULT_PUBLISH
+    }
+  })
+  const setPublish = (p: PublishConfig) => {
+    setPublishState(p)
+    localStorage.setItem(LS_PUBLISH, JSON.stringify(p))
+  }
 
   // ── library state ────────────────────────────────────────
   const [courses, setCourses] = useState<Course[]>([])
@@ -363,6 +388,48 @@ export default function Home() {
     }
   }
 
+  // ── review + publish ─────────────────────────────────────
+  const reviewer = models.find((m) => `${m.provider}:${m.id}` === publish.reviewerModelId) ?? null
+
+  async function saveCourse(c: Course) {
+    await db.putCourse(c)
+    setCourses((all) => all.map((x) => (x.id === c.id ? c : x)))
+    setCurrent((cur) => (cur?.id === c.id ? c : cur))
+  }
+
+  async function reviewCurrent() {
+    if (!current || !reviewer) return
+    const apiKey = keys[reviewer.provider].trim()
+    if (!apiKey) {
+      setSettingsOpen(true)
+      throw new Error(`Add your ${PROVIDERS[reviewer.provider].label} API key for the reviewer`)
+    }
+    const { tax } = await loadHexpo(publish)
+    const review = await reviewCourse({
+      course: current,
+      reviewer,
+      apiKey,
+      tax,
+      threshold: publish.threshold,
+    })
+    await saveCourse({ ...current, review })
+    review.passed
+      ? toast.success(`Passed — ${review.valueScore}/100`, { description: review.worthIt })
+      : toast.warning(`Not publishable — ${review.valueScore}/100`, { description: review.worthIt })
+  }
+
+  async function publishCurrent() {
+    if (!current) return
+    const out = await publishCourse(publish, current, (s) => toast.message(s))
+    await saveCourse({
+      ...current,
+      published: { id: out.id, file: out.file, at: Date.now(), commit: out.commit },
+    })
+    toast.success(out.updated ? 'Updated in hexpo' : 'Pushed to hexpo', {
+      description: `${out.file} committed to ${publish.branch}. Your deploy and library rebuild start automatically.`,
+    })
+  }
+
   // ── library ops ──────────────────────────────────────────
   async function deleteCourse(id: string) {
     await db.delCourse(id)
@@ -500,7 +567,14 @@ export default function Home() {
             />
           </div>
           <div className="rise rise-1">
-            <OutputPane gen={gen} course={current} />
+            <OutputPane
+              gen={gen}
+              course={current}
+              reviewerLabel={reviewer ? reviewer.label : null}
+              hexpoRepo={publish.repo}
+              onReview={reviewCurrent}
+              onPublish={publishCurrent}
+            />
             {gen.phase === 'error' && (
               <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
                 {gen.message}
@@ -549,7 +623,7 @@ export default function Home() {
         </footer>
       </main>
 
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} keys={keys} setKeys={setKeys} />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} keys={keys} setKeys={setKeys} models={models} publish={publish} setPublish={setPublish} />
       {busy && <div className="fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden bg-secondary"><div className="h-full w-1/3 animate-pulse bg-primary" style={{ animationDuration: '1.2s' }} /></div>}
     </div>
   )

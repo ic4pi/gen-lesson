@@ -39,6 +39,46 @@ export interface Course {
   summary: string
   topicsCovered: string[]
   createdAt: number
+  review?: ReviewResult
+  published?: { id: string; file: string; at: number; commit: string }
+}
+
+export interface ReviewIssue {
+  severity: 'blocker' | 'major' | 'minor'
+  text: string
+}
+
+export interface ReviewResult {
+  reviewerModelId: string
+  reviewerProvider: ProviderId
+  reviewedAt: number
+  /** hash of the html that was reviewed — edits after review invalidate it */
+  htmlLength: number
+  valueScore: number
+  scores: Record<'accuracy' | 'depth' | 'originality' | 'structure' | 'interactivity', number>
+  verdict: 'publish' | 'revise' | 'reject'
+  worthIt: string
+  strengths: string[]
+  issues: ReviewIssue[]
+  passed: boolean
+  threshold: number
+  meta: {
+    category: string
+    format: string
+    kicker: string
+    blurb: string
+    covers: string[]
+    concepts: { id: string; angle: string }[]
+  }
+}
+
+export interface PublishConfig {
+  repo: string
+  branch: string
+  dir: string
+  token: string
+  reviewerModelId: string // "provider:model"
+  threshold: number
 }
 
 export type Keys = Record<ProviderId, string>
