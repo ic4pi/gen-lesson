@@ -88,6 +88,13 @@ export default function PublishBar({ course, hexpoRepo, reviewerLabel, onReview,
         )}
       </div>
 
+      {course.qa && (
+        <p className={`mt-2 text-[11px] ${course.qa.passed ? 'text-muted-foreground' : 'text-destructive'}`}>
+          Browser test: {course.qa.passed ? 'passed' : `${course.qa.problems.length} issue(s) remain`}
+          {course.qa.repairs ? ` after ${course.qa.repairs} automatic repair${course.qa.repairs > 1 ? 's' : ''}` : ''}
+          {!course.qa.passed ? ` — ${course.qa.problems.slice(0, 2).join(' · ')}` : ''}
+        </p>
+      )}
       {r && (
         <div className="mt-3 space-y-2 rounded-md border border-border bg-card/60 p-3 text-xs">
           <div className="flex flex-wrap items-center gap-3">

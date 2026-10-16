@@ -15,10 +15,12 @@ import { parseContents } from '@/lib/parseContents'
 import { enhanceCourseHtml, hasFx, stripFx } from '@/lib/fx'
 import { designCourse } from '@/lib/design'
 import { makeBrief } from '@/lib/brief'
+import { runQA } from '@/lib/qa'
 import { loadReference, REFERENCE_OPTIONS } from '@/lib/references'
 import {
   CURRICULUM_SYSTEM,
   rebuildPrompt,
+  qaRepairPrompt,
   coursePrompt,
   curriculumPrompt,
   TOPIC_SYSTEM,
@@ -480,10 +482,49 @@ export default function Home() {
       if (looksTruncated(parsed.html))
         toast.warning('The document looks cut off mid-stream — regenerate with a higher-context model if sections are missing.')
 
+      // ── quality gate: test the page in a hidden browser, repair what is broken ──
+      let rawFinal = parsed.html
+      let qa = { passed: true, problems: [] as string[], at: Date.now() }
+      let repairs = 0
+      try {
+        setGen((g) => ({ ...g, phase: 'assembling', message: 'Testing the page in a browser…' }))
+        qa = await runQA(rawFinal)
+        while (!qa.passed && repairs < 2 && !abort.signal.aborted) {
+          repairs++
+          toast.message(`Quality check found ${qa.problems.length} issue(s); repairing (${repairs}/2)`, {
+            description: qa.problems.slice(0, 2).join(' · '),
+          })
+          setGen((g) => ({ ...g, phase: 'writing', chars: 0, message: 'Repairing…' }))
+          let fixedRaw = ''
+          for await (const delta of streamChat({
+            provider: model.provider,
+            apiKey,
+            model: model.id,
+            messages: [{ role: 'user', content: qaRepairPrompt({ html: rawFinal, problems: qa.problems }) }],
+            maxTokens: 32000,
+            temperature: 0.3,
+            signal: abort.signal,
+          })) {
+            fixedRaw += delta
+            setGen((g) => ({ ...g, chars: fixedRaw.length }))
+          }
+          const fixed = parseCourseHtml(fixedRaw)
+          if (!fixed.html || looksTruncated(fixed.html)) break
+          const next = await runQA(fixed.html)
+          if (next.problems.length <= qa.problems.length) {
+            rawFinal = fixed.html
+            qa = next
+          } else break
+        }
+      } catch (e: any) {
+        if (e?.name === 'AbortError') throw e
+        // a failing checker must never lose a finished course
+      }
+
       const fallbackTitle = series ? `${series.title} — Part ${part}` : t
       const finalTitle = parsed.title ?? fallbackTitle
       const finished = await finishHtml(
-        parsed.html,
+        rawFinal,
         {
           title: finalTitle,
           kicker: dmeta
@@ -506,7 +547,8 @@ export default function Home() {
         modelId: model.id,
         provider: model.provider,
         html,
-        rawHtml: parsed.html,
+        rawHtml: rawFinal,
+        qa: { passed: qa.passed, problems: qa.problems, at: qa.at, repairs },
         meta: dmeta,
         visual: visual ?? undefined,
         designedBy: finished.designedBy,

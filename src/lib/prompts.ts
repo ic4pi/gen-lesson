@@ -337,3 +337,19 @@ ${opts.html}
 
 Output the complete rebuilt HTML document and nothing else.`
 }
+
+
+export function qaRepairPrompt(opts: { html: string; problems: string[] }): string {
+  return `Automated browser testing of the masterclass page below found defects. Fix every one of them and return the COMPLETE corrected HTML document.
+
+DEFECTS FOUND:
+${opts.problems.map((p) => `- ${p}`).join('\n')}
+
+RULES:
+- Fix the root cause in the code. Do not remove features, shorten content, or simplify the design to hide a problem: a blank canvas must be made to draw, a script error must be fixed, horizontal overflow must be fixed with responsive CSS.
+- Keep all content, structure, palette and interactions otherwise exactly as they are.
+- Output one complete HTML document from <!DOCTYPE html> to </html>, with the COURSE_META comment before </body> unchanged. No markdown fences, no commentary.
+
+THE PAGE:
+${opts.html}`
+}

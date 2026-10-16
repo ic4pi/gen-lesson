@@ -57,6 +57,7 @@ export interface Course {
   review?: ReviewResult
   /** writer's functional version, before the designer pass and Foundry fx */
   rawHtml?: string
+  qa?: { passed: boolean; problems: string[]; at: number; repairs: number }
   meta?: DecimalMeta
   visual?: VisualDirection
   designedBy?: string
