@@ -156,3 +156,103 @@ export const DEFAULT_MODELS: ModelOption[] = [
     bestFor: 'Free tier — test ideas for $0',
   },
 ]
+
+// ── Designer models: they restyle a finished, working course into a stunning UI ──
+// Same shape as the writer list, three tiers.
+export const DESIGN_TIER_ORDER: Tier[] = ['flagship', 'value', 'budget']
+
+export const DESIGN_TIER_INFO: Record<string, { label: string; blurb: string }> = {
+  flagship: { label: 'Flagship Designers', blurb: 'The best-looking, most inventive UI — cost is not the concern' },
+  value: { label: 'Bang for Buck', blurb: 'Strong visual taste and clean CSS at a fraction of the price' },
+  budget: { label: 'Cheapest Capable', blurb: 'A solid restyle for pennies; fine for drafts' },
+}
+
+export const DESIGNER_MODELS: ModelOption[] = [
+  // ── Flagship ──
+  {
+    id: 'anthropic/claude-opus-4.1',
+    label: 'Claude Opus 4.1',
+    provider: 'openrouter',
+    tier: 'flagship',
+    bestFor: 'Most refined taste: typography, spacing, restraint, cinematic detail',
+  },
+  {
+    id: 'anthropic/claude-sonnet-4.5',
+    label: 'Claude Sonnet 4.5',
+    provider: 'openrouter',
+    tier: 'flagship',
+    bestFor: 'Excellent front-end craft and animation, faster and cheaper than Opus',
+  },
+  {
+    id: 'openai/gpt-5',
+    label: 'GPT-5',
+    provider: 'openrouter',
+    tier: 'flagship',
+    bestFor: 'Precise layout and robust CSS; very reliable at keeping the JS intact',
+  },
+  {
+    id: 'google/gemini-2.5-pro',
+    label: 'Gemini 2.5 Pro',
+    provider: 'openrouter',
+    tier: 'flagship',
+    bestFor: 'Bold visual ideas and big context for long courses',
+  },
+  {
+    id: 'claude-sonnet-4-6',
+    label: 'Claude Sonnet 4.6 (Venice)',
+    provider: 'venice',
+    tier: 'flagship',
+    bestFor: 'Frontier design quality through the private proxy',
+  },
+  // ── Bang for Buck ──
+  {
+    id: 'google/gemini-2.5-flash',
+    label: 'Gemini 2.5 Flash',
+    provider: 'openrouter',
+    tier: 'value',
+    bestFor: 'Fast, good-looking restyles, huge context',
+  },
+  {
+    id: 'qwen/qwen3-coder',
+    label: 'Qwen3 Coder',
+    provider: 'openrouter',
+    tier: 'value',
+    bestFor: 'Clean, disciplined CSS and markup; rarely breaks scripts',
+  },
+  {
+    id: 'deepseek/deepseek-chat-v3.1',
+    label: 'DeepSeek V3.1',
+    provider: 'openrouter',
+    tier: 'value',
+    bestFor: 'Near-flagship front-end output for very little',
+  },
+  {
+    id: 'kimi-k2-6',
+    label: 'Kimi K2.6 (Venice)',
+    provider: 'venice',
+    tier: 'value',
+    bestFor: 'Strong at interactive HTML and animation code',
+  },
+  // ── Cheapest Capable ──
+  {
+    id: 'google/gemini-2.5-flash-lite',
+    label: 'Gemini 2.5 Flash Lite',
+    provider: 'openrouter',
+    tier: 'budget',
+    bestFor: 'Cheapest restyle that still holds the page together',
+  },
+  {
+    id: 'deepseek/deepseek-chat',
+    label: 'DeepSeek Chat',
+    provider: 'openrouter',
+    tier: 'budget',
+    bestFor: 'Draft-quality restyles at bottom-barrel price',
+  },
+  {
+    id: 'meta/llama-3.3-70b-instruct',
+    label: 'Llama 3.3 70B (NVIDIA)',
+    provider: 'nvidia',
+    tier: 'budget',
+    bestFor: 'Free tier; modest results, test the pipeline for $0',
+  },
+]

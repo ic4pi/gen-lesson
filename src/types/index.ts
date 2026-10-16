@@ -40,6 +40,9 @@ export interface Course {
   topicsCovered: string[]
   createdAt: number
   review?: ReviewResult
+  /** writer's functional version, before the designer pass and Foundry fx */
+  rawHtml?: string
+  designedBy?: string
   published?: { id: string; file: string; at: number; commit: string }
 }
 
@@ -89,6 +92,7 @@ export type GenPhase =
   | 'planning'
   | 'writing'
   | 'assembling'
+  | 'designing'
   | 'done'
   | 'error'
 

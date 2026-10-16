@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, ExternalLink, Rocket, ShieldCheck, Wand2, XCircle } from 'lucide-react'
+import { CheckCircle2, ExternalLink, Palette, Rocket, ShieldCheck, Wand2, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import type { Course } from '@/types'
@@ -10,15 +10,16 @@ interface Props {
   reviewerLabel: string | null
   onReview: () => Promise<void>
   onAutoFix: () => Promise<void>
+  onRedesign: () => Promise<void>
   onPublish: () => Promise<void>
 }
 
-export default function PublishBar({ course, hexpoRepo, reviewerLabel, onReview, onAutoFix, onPublish }: Props) {
-  const [busy, setBusy] = useState<'review' | 'fix' | 'publish' | null>(null)
+export default function PublishBar({ course, hexpoRepo, reviewerLabel, onReview, onAutoFix, onRedesign, onPublish }: Props) {
+  const [busy, setBusy] = useState<'review' | 'fix' | 'design' | 'publish' | null>(null)
   const r = course.review
   const stale = r && r.htmlLength !== course.html.length
 
-  const run = async (kind: 'review' | 'fix' | 'publish', fn: () => Promise<void>) => {
+  const run = async (kind: 'review' | 'fix' | 'design' | 'publish', fn: () => Promise<void>) => {
     setBusy(kind)
     try {
       await fn()
@@ -52,6 +53,16 @@ export default function PublishBar({ course, hexpoRepo, reviewerLabel, onReview,
         >
           <Wand2 className="mr-1.5 h-3.5 w-3.5" />
           {busy === 'fix' ? 'Reviewing / rebuilding…' : 'Review & auto-fix'}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy !== null}
+          onClick={() => run('design', onRedesign)}
+          title="Send the working page to the designer model for a new look"
+        >
+          <Palette className="mr-1.5 h-3.5 w-3.5" />
+          {busy === 'design' ? 'Designing…' : course.designedBy ? 'Restyle again' : 'Restyle (designer)'}
         </Button>
         <Button
           size="sm"

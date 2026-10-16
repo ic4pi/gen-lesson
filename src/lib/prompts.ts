@@ -35,16 +35,21 @@ const ACCURACY_SPEC = `ACCURACY & DEPTH STANDARD — this outranks everything el
 - For such material, ACCURACY means fidelity to the tradition and its sources (what the Hatha Yoga Pradipika, the Sat-Chakra-Nirupana, Agrippa, the Corpus Hermeticum etc. really say, and how schools differ), not scientific validation. Put the modern view in ONE clearly marked place per chapter or in a dedicated section: where mainstream science and medicine find no support or disagree, stated plainly and briefly, alongside what practitioners report. Never present a tradition's metaphysical claims as established scientific fact, and never give medical advice or promise cures. Include the cautions the tradition itself gives about its practices.
 - Name concrete sources (author, work, period) so the reader can check you. Prefer specific over impressive.`
 
-const DESIGN_SPEC = `QUALITY BAR — read this twice:
+export const DESIGN_BRIEF = `QUALITY BAR — read this twice:
 This is for a private mystery-school library. The pages must look and feel like a premium, hand-crafted immersive course — the level of a high-end editorial site crossed with an interactive experience. Think: a hero with a signature animated visual that is unique to the topic (a self-drawing sigil, a particle horizon that bends toward the cursor, drifting glyphs), a sticky chapter navigation, scroll progress, pull quotes with attribution, narrative story blocks, interactive exercises with a saved private journal, deep-dive drawers, hover-definition terms, a real glossary, and honest labelling of what is established versus speculative. Generic, template-looking, flat or text-wall pages are unacceptable. Exceed that bar on every page.
 
 BACKGROUND AND COLOUR (hard rules):
 - The page background is PURE BLACK (#000) or an almost-black neutral (#05050a at the lightest). NEVER a purple, violet, indigo, navy or any tinted page background, and never a gradient across the whole page. Page wrappers (body, main, .page, .app, .shell) must use background: transparent — the Foundry draws an animated black field behind them.
 - Cards, panels, sidebars and drawers are translucent near-black (e.g. rgba(8,8,12,.72)) with a hairline border — never a saturated or purple fill.
 - Colour comes only from accents: derive a 2–3 colour accent palette from the subject itself (e.g. antique gold + oxblood, teal + amber, bone + crimson). Purple/violet may appear ONLY as a small accent if the subject truly calls for it — never as a surface.
-- Typography: load exactly two Google Fonts (a distinctive display face and a readable body face) chosen to suit the subject. Real hierarchy, generous whitespace, body text 17px+ with relaxed line-height, max reading width ~70ch.
+- Typography: load exactly two Google Fonts (a distinctive display face and a readable body face) chosen to suit the subject. Real hierarchy, generous whitespace, body text 17px+ with relaxed line-height, max reading width ~70ch.`
 
-REQUIRED STRUCTURE:
+const STYLING_NOTE = `STYLING — A SEPARATE DESIGNER WILL RESTYLE YOUR PAGE AFTERWARDS. Your job is information and working code, not looks:
+- Use clean, minimal, readable CSS only: dark neutral page, system font stack (NO Google Fonts), simple layout. Do not spend tokens on ornament, gradients, or visual flourish.
+- Build it so a designer can restyle it safely: semantic HTML (header, nav, main, section, article, aside, figure, details); one class per component role (.hero, .chapter, .callout, .pullquote, .card, .quiz, .flip, .tabs, .accordion, .journal, .glossary, .diagram); every colour, font and spacing value as a CSS custom property on :root; JavaScript finds elements by id or data- attributes, never by styling classes.
+- Spend your effort on: factual depth, correct and complete content, and interactive features that genuinely work.`
+
+const FUNCTION_SPEC = `REQUIRED STRUCTURE:
 1. A fixed scroll-progress bar at the very top.
 2. A hero: course title, part designation if any, estimated reading time, a one-paragraph promise, and 3–4 concrete outcomes ("what you will walk away with") — with the signature animated visual described below.
 3. Sticky chapter navigation (side rail or sidebar on desktop, collapsible on mobile) with active-section highlighting via IntersectionObserver.
@@ -61,6 +66,29 @@ ENGINEERING:
 - Fully mobile responsive, no horizontal scroll, touch targets ≥ 44px, keyboard-accessible controls with visible focus.
 - Must work opened directly as a local .html file — no build step, no network dependency beyond Google Fonts.
 - Complete and unabridged: never write "etc.", "more here" or skeletons. Finish every chapter and close every tag.`
+
+export function designPrompt(opts: { html: string; title: string }): string {
+  return `You are a world-class art director and front-end designer. Below is a finished, fully working masterclass page written by an engineer: the content and the code are final. Make it look breathtaking: the most beautiful, immersive, premium course page the reader has ever seen. Think award-winning editorial site crossed with a cinematic interactive experience: confident typography, dramatic hierarchy, rich layered depth, tasteful glow and texture, elegant hover and focus states, refined spacing, beautiful pull quotes, callouts, cards, quizzes, flip cards, accordions and diagrams, and a signature hero visual unique to the subject.
+
+${DESIGN_BRIEF}
+
+HARD CONSTRAINTS — if you break any of these the work is discarded:
+1. CONTENT IS UNTOUCHED. Keep every word, fact, quote, citation, quiz question and answer, glossary entry and chapter exactly as written. Do not summarise, shorten, reorder or rewrite. You may add purely decorative elements (SVG ornaments, dividers, canvas art, numerals) but no new teaching text.
+2. CODE STILL WORKS. Keep every <script>, and every id, data- attribute and class the scripts use. Do not rename or remove them. Every interactive feature (quizzes, flips, tabs, accordions, journal, progress, diagrams, nav highlighting) must work exactly as before, and the existing localStorage keys must not change.
+3. You are mainly rewriting CSS and the presentational markup around the content. Replace the plain system fonts with exactly two Google Fonts chosen for this subject. You may add wrapper elements and classes, and extra CSS/JS for animation.
+4. No external scripts, no images by URL, no network calls (no fetch, XMLHttpRequest, WebSocket, sendBeacon), anywhere, including in prose.
+5. Motion: html.no-motion * { animation: none !important; transition: none !important; } must exist, and every requestAnimationFrame/setInterval loop you add must check document.documentElement.classList.contains('no-motion') and stop or draw a static frame, with a MutationObserver to resume. Also respect prefers-reduced-motion.
+6. THE FOUNDRY INJECTS THESE AUTOMATICALLY — DO NOT BUILD THEM: the animated black background field, the cinematic title opening, scroll-reveal fades, the Motion switch.
+7. Fully responsive, no horizontal scroll, touch targets 44px or more, visible focus states.
+8. Output the COMPLETE document: <!DOCTYPE html> to </html>, no markdown fences, no commentary. Never truncate, never write "etc." or "unchanged".
+
+PAGE TITLE: ${opts.title}
+
+THE PAGE TO RESTYLE:
+${opts.html}
+
+Output the complete restyled HTML document and nothing else.`
+}
 
 export function coursePrompt(opts: {
   topic: string
@@ -96,7 +124,7 @@ Continuity rules:
 - End with a short "Where we go next" section pointing at Part ${part + 1 <= series.plan.length ? `${part + 1} — "${series.plan.find((p) => p.part === part + 1)?.title ?? ''}"` : 'the reader\'s next steps beyond this series'}.`
   }
 
-  return `You are the Foundry — a masterclass author and world-class front-end designer in one. Build a complete interactive masterclass as a single HTML file.
+  return `You are the Foundry — a masterclass author and engineer in one. Build a complete, accurate, fully working interactive masterclass as a single HTML file.
 
 TOPIC: ${topic}
 ${seriesBlock}
@@ -105,7 +133,9 @@ ${OUTPUT_CONTRACT}
 
 ${ACCURACY_SPEC}
 
-${DESIGN_SPEC}
+${STYLING_NOTE}
+
+${FUNCTION_SPEC}
 
 Begin now. Output the HTML document and nothing else.`
 }

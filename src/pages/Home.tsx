@@ -9,10 +9,11 @@ import OutputPane from '@/sections/OutputPane'
 import Library from '@/sections/Library'
 import SettingsDialog from '@/sections/SettingsDialog'
 import TopicQueue from '@/sections/TopicQueue'
-import { DEFAULT_MODELS, PROVIDERS } from '@/lib/models'
+import { DEFAULT_MODELS, DESIGNER_MODELS, PROVIDERS } from '@/lib/models'
 import { chatOnce, streamChat } from '@/lib/llm'
 import { parseContents } from '@/lib/parseContents'
-import { enhanceCourseHtml, hasFx } from '@/lib/fx'
+import { enhanceCourseHtml, hasFx, stripFx } from '@/lib/fx'
+import { designCourse } from '@/lib/design'
 import {
   CURRICULUM_SYSTEM,
   rebuildPrompt,
@@ -44,6 +45,7 @@ import type {
 const LS_KEYS = 'mf.keys'
 const LS_MOTION = 'mf.motion'
 const LS_MODEL = 'mf.model'
+const LS_DESIGNER = 'mf.designer'
 const LS_CUSTOM = 'mf.customModels'
 const LS_SUBJECT = 'mf.subject'
 const LS_SUGGESTIONS = 'mf.suggestions'
@@ -141,6 +143,14 @@ export default function Home() {
   const queueStopRef = useRef(false)
   const queueRef = useRef<QueueItem[]>(queue)
   const lastErrorRef = useRef('')
+  const [designerId, setDesignerId] = useState(
+    () => localStorage.getItem(LS_DESIGNER) ?? 'openrouter:anthropic/claude-sonnet-4.5',
+  )
+  useEffect(() => {
+    localStorage.setItem(LS_DESIGNER, designerId)
+  }, [designerId])
+  const designerRef = useRef(designerId)
+  designerRef.current = designerId
   const modelRef = useRef(modelId)
   modelRef.current = modelId
   const keysRef = useRef(keys)
@@ -157,6 +167,10 @@ export default function Home() {
   const abortRef = useRef<AbortController | null>(null)
 
   const models = useMemo(() => [...DEFAULT_MODELS, ...customModels], [customModels])
+  const designerModels = useMemo(() => {
+    const seen = new Set(DESIGNER_MODELS.map((m) => `${m.provider}:${m.id}`))
+    return [...DESIGNER_MODELS, ...customModels.filter((m) => !seen.has(`${m.provider}:${m.id}`))]
+  }, [customModels])
 
   // ── effects ──────────────────────────────────────────────
   useEffect(() => {
@@ -221,6 +235,47 @@ export default function Home() {
   }
 
   // ── generation orchestration ─────────────────────────────
+  /** Designer pass + Foundry fx. Never throws: on any failure the working undesigned page is kept. */
+  async function finishHtml(
+    raw: string,
+    meta: { title: string; kicker?: string },
+    signal?: AbortSignal,
+  ): Promise<{ html: string; designedBy?: string }> {
+    const fx = (h: string) => enhanceCourseHtml(h, meta)
+    const designer = designerModels.find((m) => `${m.provider}:${m.id}` === designerRef.current)
+    if (!designer) return { html: fx(raw) }
+    const apiKey = keysRef.current[designer.provider].trim()
+    if (!apiKey) {
+      toast.warning(`No ${PROVIDERS[designer.provider].label} key for the designer — keeping the plain build`)
+      return { html: fx(raw) }
+    }
+    setGen((g) => ({ ...g, phase: 'designing', chars: 0, message: `${designer.label} is styling the page…` }))
+    try {
+      const r = await designCourse({
+        rawHtml: raw,
+        title: meta.title,
+        designer,
+        apiKey,
+        signal,
+        onProgress: (chars) => setGen((g) => ({ ...g, chars })),
+      })
+      if (r.ok) return { html: fx(r.html), designedBy: designer.id }
+      toast.warning(`Designer output rejected (${r.reason}) — kept the plain build. Use Restyle to retry.`)
+    } catch (e: any) {
+      if (e?.name === 'AbortError') throw e
+      toast.warning(`Designer failed (${e?.message ?? 'error'}) — kept the plain build.`)
+    }
+    return { html: fx(raw) }
+  }
+
+  const fxMeta = (c: Course) => {
+    const sr = c.seriesId ? seriesList.find((x) => x.id === c.seriesId) : undefined
+    return {
+      title: c.title,
+      kicker: sr && c.part ? `Part ${c.part} of ${sr.plan.length} · ${sr.title}` : undefined,
+    }
+  }
+
   async function generate(ov?: GenOverride): Promise<GenResult | null> {
     const t = (ov ? ov.topic : topic).trim()
     const mode = ov ? (ov.mode ?? 'standalone') : seriesMode
@@ -333,10 +388,15 @@ export default function Home() {
 
       const fallbackTitle = series ? `${series.title} — Part ${part}` : t
       const finalTitle = parsed.title ?? fallbackTitle
-      const html = enhanceCourseHtml(parsed.html, {
-        title: finalTitle,
-        kicker: series && part ? `Part ${part} of ${series.plan.length} · ${series.title}` : undefined,
-      })
+      const finished = await finishHtml(
+        parsed.html,
+        {
+          title: finalTitle,
+          kicker: series && part ? `Part ${part} of ${series.plan.length} · ${series.title}` : undefined,
+        },
+        abort.signal,
+      )
+      const html = finished.html
       const course: Course = {
         id: uid(),
         seriesId: series?.id ?? null,
@@ -347,6 +407,8 @@ export default function Home() {
         modelId: model.id,
         provider: model.provider,
         html,
+        rawHtml: parsed.html,
+        designedBy: finished.designedBy,
         summary: parsed.summary,
         topicsCovered: parsed.topicsCovered,
         createdAt: Date.now(),
@@ -648,7 +710,7 @@ export default function Home() {
             content: rebuildPrompt({
               topic: cur.topic,
               notes: cur.notes,
-              html: cur.html,
+              html: cur.rawHtml ?? stripFx(cur.html),
               verdict: r.verdict,
               worthIt: r.worthIt,
               issues: r.issues,
@@ -669,7 +731,9 @@ export default function Home() {
       }
       const rebuilt: Course = {
         ...cur,
-        html: parsed.html,
+        html: enhanceCourseHtml(parsed.html, fxMeta({ ...cur, title: parsed.title ?? cur.title })),
+        rawHtml: parsed.html,
+        designedBy: undefined,
         title: parsed.title ?? cur.title,
         summary: parsed.summary || cur.summary,
         topicsCovered: parsed.topicsCovered.length ? parsed.topicsCovered : cur.topicsCovered,
@@ -680,12 +744,39 @@ export default function Home() {
       if (cur.review!.valueScore >= best.review!.valueScore || cur.review!.passed) best = cur
     }
     if (best !== cur) await saveCourse(best) // a later rebuild scored worse — restore the best one
+    if (best.rawHtml && !best.designedBy && best.review!.passed && designerRef.current !== 'none') {
+      const fin = await finishHtml(best.rawHtml, fxMeta(best))
+      if (fin.designedBy) {
+        // content was verified unchanged by the designer check, so the review still applies
+        best = { ...best, html: fin.html, designedBy: fin.designedBy, review: { ...best.review!, htmlLength: fin.html.length } }
+        await saveCourse(best)
+      }
+      setGen(IDLE)
+    }
     const r = best.review!
     r.passed
       ? toast.success(`Passed — ${r.valueScore}/100`, { description: 'Ready to publish.' })
       : toast.warning(`Still not publishable after ${rounds} rebuild(s) — best ${r.valueScore}/100`, {
           description: r.worthIt,
         })
+  }
+
+  async function redesignCurrent() {
+    if (!current) return
+    if (designerRef.current === 'none') throw new Error('Pick a designer model first')
+    const raw = current.rawHtml ?? stripFx(current.html)
+    const fin = await finishHtml(raw, fxMeta(current))
+    setGen(IDLE)
+    if (!fin.designedBy) return
+    const next: Course = {
+      ...current,
+      rawHtml: raw,
+      html: fin.html,
+      designedBy: fin.designedBy,
+      review: current.review ? { ...current.review, htmlLength: fin.html.length } : undefined,
+    }
+    await saveCourse(next)
+    toast.success('Restyled', { description: `Designed by ${fin.designedBy}` })
   }
 
   async function publishCurrent() {
@@ -745,7 +836,7 @@ export default function Home() {
     }
   }
 
-  const busy = queueRunning || gen.phase === 'planning' || gen.phase === 'writing' || gen.phase === 'assembling'
+  const busy = queueRunning || gen.phase === 'planning' || gen.phase === 'writing' || gen.phase === 'assembling' || gen.phase === 'designing'
 
   return (
     <div className="min-h-dvh">
@@ -827,6 +918,9 @@ export default function Home() {
               models={models}
               modelId={modelId}
               setModelId={setModelId}
+              designerModels={designerModels}
+              designerId={designerId}
+              setDesignerId={setDesignerId}
               onAddCustom={addCustomModel}
               onGenerate={() => generate()}
               onCancel={stopQueue}
@@ -841,6 +935,7 @@ export default function Home() {
               hexpoRepo={publish.repo}
               onReview={reviewCurrent}
               onAutoFix={autoImprove}
+              onRedesign={redesignCurrent}
               onPublish={publishCurrent}
             />
             {gen.phase === 'error' && (

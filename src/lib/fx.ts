@@ -157,3 +157,11 @@ export function enhanceCourseHtml(
     : out.replace(/<\/html>/i, () => script + '</html>')
   return out
 }
+
+/** Remove the Foundry presentation layer so the underlying course can be restyled again. */
+export function stripFx(html: string): string {
+  return html
+    .replace(/<style id="fx-style">[\s\S]*?<\/style>/, '')
+    .replace(/<div id="fx-intro"[\s\S]*?<div class="skip">[^<]*<\/div><\/div>/, '')
+    .replace(/<script id="fx-script">[\s\S]*?<\/script>/, '')
+}

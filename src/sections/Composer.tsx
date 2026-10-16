@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { PROVIDERS, TIER_INFO, TIER_ORDER } from '@/lib/models'
+import { DESIGN_TIER_INFO, DESIGN_TIER_ORDER, PROVIDERS, TIER_INFO, TIER_ORDER } from '@/lib/models'
 import type { Course, GenState, ModelOption, ProviderId, Series, Tier } from '@/types'
 
 interface Props {
@@ -28,6 +28,9 @@ interface Props {
   models: ModelOption[]
   modelId: string
   setModelId: (v: string) => void
+  designerModels: ModelOption[]
+  designerId: string
+  setDesignerId: (v: string) => void
   onAddCustom: (m: ModelOption) => void
   onGenerate: () => void
   onCancel: () => void
@@ -38,7 +41,7 @@ const inputCls =
   'bg-secondary border-input focus-visible:ring-primary/60 placeholder:text-muted-foreground/50'
 
 export default function Composer(p: Props) {
-  const busy = p.gen.phase === 'planning' || p.gen.phase === 'writing' || p.gen.phase === 'assembling'
+  const busy = p.gen.phase === 'planning' || p.gen.phase === 'writing' || p.gen.phase === 'assembling' || p.gen.phase === 'designing'
   const [customProvider, setCustomProvider] = useState<ProviderId>('openrouter')
   const [customId, setCustomId] = useState('')
 
@@ -47,6 +50,12 @@ export default function Composer(p: Props) {
     for (const m of p.models) g[m.tier].push(m)
     return g
   }, [p.models])
+
+  const designGrouped = useMemo(() => {
+    const g: Record<string, ModelOption[]> = { flagship: [], value: [], budget: [] }
+    for (const m of p.designerModels) (g[m.tier] ?? g.value).push(m)
+    return g
+  }, [p.designerModels])
 
   const selectedSeries = p.seriesList.find((s) => s.id === p.seriesMode)
   const nextPart = selectedSeries
@@ -145,9 +154,50 @@ export default function Composer(p: Props) {
         )}
       </div>
 
+      {/* Designer picker */}
+      <div className="space-y-2 rise rise-3">
+        <Label className="label-mono">Designer (restyles the finished course)</Label>
+        <Select value={p.designerId} onValueChange={p.setDesignerId} disabled={busy}>
+          <SelectTrigger className={inputCls}>
+            <SelectValue placeholder="Choose a designer" />
+          </SelectTrigger>
+          <SelectContent className="max-h-80">
+            <SelectItem value="none">
+              <span className="text-foreground">No designer — plain build</span>
+            </SelectItem>
+            {DESIGN_TIER_ORDER.map((tier) =>
+              designGrouped[tier]?.length ? (
+                <SelectGroup key={tier}>
+                  <SelectLabel className="label-mono pt-2">
+                    {DESIGN_TIER_INFO[tier].label} — {DESIGN_TIER_INFO[tier].blurb}
+                  </SelectLabel>
+                  {designGrouped[tier].map((m) => (
+                    <SelectItem key={`${m.provider}:${m.id}`} value={`${m.provider}:${m.id}`}>
+                      <span className="flex flex-col items-start gap-0.5 py-0.5">
+                        <span className="flex items-center gap-2">
+                          <span className="text-foreground">{m.label}</span>
+                          <span className="font-mono2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                            {PROVIDERS[m.provider].label}
+                          </span>
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">{m.bestFor}</span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ) : null,
+            )}
+          </SelectContent>
+        </Select>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          The writer above produces the information and working code. The designer then restyles
+          it; if it breaks content or scripts, the plain build is kept.
+        </p>
+      </div>
+
       {/* Model picker */}
       <div className="space-y-2 rise rise-3">
-        <Label className="label-mono">Model</Label>
+        <Label className="label-mono">Writer (information and code)</Label>
         <Select value={p.modelId} onValueChange={p.setModelId} disabled={busy}>
           <SelectTrigger className={inputCls}>
             <SelectValue placeholder="Choose a model" />

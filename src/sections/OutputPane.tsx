@@ -14,6 +14,7 @@ interface Props {
   hexpoRepo: string
   onReview: () => Promise<void>
   onAutoFix: () => Promise<void>
+  onRedesign: () => Promise<void>
   onPublish: () => Promise<void>
 }
 
@@ -21,10 +22,11 @@ const PHASE_LABEL: Record<string, string> = {
   planning: 'Planning curriculum',
   writing: 'Writing course',
   assembling: 'Assembling document',
+  designing: 'Designer styling the page',
 }
 
-export default function OutputPane({ gen, course, reviewerLabel, hexpoRepo, onReview, onAutoFix, onPublish }: Props) {
-  const busy = gen.phase === 'planning' || gen.phase === 'writing' || gen.phase === 'assembling'
+export default function OutputPane({ gen, course, reviewerLabel, hexpoRepo, onReview, onAutoFix, onRedesign, onPublish }: Props) {
+  const busy = gen.phase === 'planning' || gen.phase === 'writing' || gen.phase === 'assembling' || gen.phase === 'designing'
 
   return (
     <div className="flex min-h-[560px] flex-col rounded-lg border border-border bg-card/60 backdrop-blur-sm">
@@ -102,7 +104,7 @@ export default function OutputPane({ gen, course, reviewerLabel, hexpoRepo, onRe
             </pre>
           </TabsContent>
         </Tabs>
-        <PublishBar course={course} hexpoRepo={hexpoRepo} reviewerLabel={reviewerLabel} onReview={onReview} onAutoFix={onAutoFix} onPublish={onPublish} />
+        <PublishBar course={course} hexpoRepo={hexpoRepo} reviewerLabel={reviewerLabel} onReview={onReview} onAutoFix={onAutoFix} onRedesign={onRedesign} onPublish={onPublish} />
         </>
       ) : (
         <EmptyState />
@@ -112,7 +114,7 @@ export default function OutputPane({ gen, course, reviewerLabel, hexpoRepo, onRe
 }
 
 function GenerationView({ gen }: { gen: GenState }) {
-  const steps = ['planning', 'writing', 'assembling'] as const
+  const steps = ['planning', 'writing', 'assembling', 'designing'] as const
   const currentIdx = steps.indexOf(gen.phase as (typeof steps)[number])
   return (
     <div className="scanline flex flex-1 flex-col items-center justify-center gap-8 p-10">
