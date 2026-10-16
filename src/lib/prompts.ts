@@ -24,7 +24,8 @@ const OUTPUT_CONTRACT = `OUTPUT CONTRACT — follow exactly:
 1. Output ONE complete, self-contained HTML document. First characters: <!DOCTYPE html> — last characters: </html>. No markdown code fences. No commentary before or after.
 2. Immediately before the closing </body> tag, place exactly one metadata comment in this exact shape:
 <!--COURSE_META:{"title":"course title","summary":"2-3 sentences describing precisely what this course teaches","topicsCovered":["topic","topic","topic"]}-->
-3. ALL CSS lives in a single <style> block in <head>. ALL JS lives in a single <script> block before </body>. No external scripts or stylesheets except Google Fonts. Never hotlink images — use inline SVG, CSS art, gradients, or canvas for all visuals.`
+3. ALL CSS lives in a single <style> block in <head>. ALL JS lives in a single <script> block before </body>. No external scripts or stylesheets except Google Fonts. Never hotlink images — use inline SVG, CSS art, gradients, or canvas for all visuals.
+4. The page must never make network requests: no fetch, XMLHttpRequest, WebSocket or sendBeacon anywhere in the JS, and never write those words in prose either.`
 
 const DESIGN_SPEC = `DESIGN DIRECTION:
 - Derive the ENTIRE visual theme from the subject itself: palette, typography pairing, and one signature visual motif must feel native to this topic. A course on ceremonial magic must not look like a course on thermodynamics. Commit to the theme fully.

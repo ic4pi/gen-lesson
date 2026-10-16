@@ -13,16 +13,19 @@ import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { PROVIDERS } from '@/lib/models'
 import { listModels } from '@/lib/llm'
-import type { Keys, ProviderId } from '@/types'
+import type { Keys, ModelOption, ProviderId, PublishConfig } from '@/types'
 
 interface Props {
   open: boolean
   onOpenChange: (v: boolean) => void
   keys: Keys
   setKeys: (k: Keys) => void
+  models: ModelOption[]
+  publish: PublishConfig
+  setPublish: (p: PublishConfig) => void
 }
 
-export default function SettingsDialog({ open, onOpenChange, keys, setKeys }: Props) {
+export default function SettingsDialog({ open, onOpenChange, keys, setKeys, models, publish, setPublish }: Props) {
   const [testing, setTesting] = useState<ProviderId | null>(null)
 
   const test = async (id: ProviderId) => {
@@ -93,6 +96,59 @@ export default function SettingsDialog({ open, onOpenChange, keys, setKeys }: Pr
               <p className="text-[11px] text-muted-foreground">{PROVIDERS[id].hint}</p>
             </div>
           ))}
+        </div>
+
+        <div className="space-y-3 border-t border-border pt-4">
+          <Label className="label-mono">Review &amp; publish to hexpo</Label>
+          <p className="text-[11px] text-muted-foreground">
+            A second, different model reviews each course. Only passing courses can be committed
+            to your hexpo repo's masterclasses folder, which triggers your redeploy.
+          </p>
+          <select
+            value={publish.reviewerModelId}
+            onChange={(e) => setPublish({ ...publish, reviewerModelId: e.target.value })}
+            className="h-9 w-full rounded-md border border-input bg-secondary px-2 text-xs"
+          >
+            <option value="">Reviewer model…</option>
+            {models.map((m) => (
+              <option key={`${m.provider}:${m.id}`} value={`${m.provider}:${m.id}`}>
+                {m.label} — {PROVIDERS[m.provider].label}
+              </option>
+            ))}
+          </select>
+          <div className="grid grid-cols-[1fr_90px] gap-2">
+            <Input
+              value={publish.repo}
+              onChange={(e) => setPublish({ ...publish, repo: e.target.value.trim() })}
+              placeholder="owner/repo"
+              className="border-input bg-secondary font-mono2 text-xs"
+            />
+            <Input
+              value={publish.branch}
+              onChange={(e) => setPublish({ ...publish, branch: e.target.value.trim() })}
+              placeholder="branch"
+              className="border-input bg-secondary font-mono2 text-xs"
+            />
+          </div>
+          <Input
+            type="password"
+            value={publish.token}
+            onChange={(e) => setPublish({ ...publish, token: e.target.value.trim() })}
+            placeholder="GitHub fine-grained token (Contents: read and write on the repo)"
+            className="border-input bg-secondary font-mono2 text-xs"
+          />
+          <div className="flex items-center gap-2">
+            <Label className="text-[11px] text-muted-foreground">Pass score</Label>
+            <Input
+              type="number"
+              min={50}
+              max={95}
+              value={publish.threshold}
+              onChange={(e) => setPublish({ ...publish, threshold: Number(e.target.value) || 75 })}
+              className="h-8 w-20 border-input bg-secondary font-mono2 text-xs"
+            />
+            <span className="text-[11px] text-muted-foreground">/100, and no blocker issues</span>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

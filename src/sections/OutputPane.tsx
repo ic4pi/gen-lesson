@@ -5,10 +5,15 @@ import { toast } from 'sonner'
 import type { Course, GenState } from '@/types'
 import { downloadCourse } from '@/lib/download'
 import { PROVIDERS } from '@/lib/models'
+import PublishBar from '@/sections/PublishBar'
 
 interface Props {
   gen: GenState
   course: Course | null
+  reviewerLabel: string | null
+  hexpoRepo: string
+  onReview: () => Promise<void>
+  onPublish: () => Promise<void>
 }
 
 const PHASE_LABEL: Record<string, string> = {
@@ -17,7 +22,7 @@ const PHASE_LABEL: Record<string, string> = {
   assembling: 'Assembling document',
 }
 
-export default function OutputPane({ gen, course }: Props) {
+export default function OutputPane({ gen, course, reviewerLabel, hexpoRepo, onReview, onPublish }: Props) {
   const busy = gen.phase === 'planning' || gen.phase === 'writing' || gen.phase === 'assembling'
 
   return (
@@ -50,6 +55,7 @@ export default function OutputPane({ gen, course }: Props) {
       {busy ? (
         <GenerationView gen={gen} />
       ) : course ? (
+        <>
         <Tabs defaultValue="preview" className="flex flex-1 flex-col">
           <div className="flex items-center justify-between border-b border-border px-4 py-2">
             <TabsList className="bg-secondary">
@@ -95,6 +101,8 @@ export default function OutputPane({ gen, course }: Props) {
             </pre>
           </TabsContent>
         </Tabs>
+        <PublishBar course={course} hexpoRepo={hexpoRepo} reviewerLabel={reviewerLabel} onReview={onReview} onPublish={onPublish} />
+        </>
       ) : (
         <EmptyState />
       )}
