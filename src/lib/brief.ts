@@ -89,6 +89,7 @@ export async function makeBrief(opts: {
     maxTokens: 5000,
     temperature: 0.8,
     signal: opts.signal,
+    timeoutMs: 150_000,
   })
   const j = parse(raw)
   if (!j?.content) return null
