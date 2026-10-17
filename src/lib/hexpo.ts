@@ -169,9 +169,12 @@ export async function publishCourse(
     const m = course.meta
     let id = prior?.id ?? (m?.filename ? m.filename.replace(/\.html$/i, '') : slugify(course.title))
     if (!prior) {
+      // a numbered item that is already in hexpo is the same item: update it, never add a second copy
+      const same = m ? reg.topics.find((t: any) => t.number === m.number || t.id === id) : undefined
+      if (same) id = same.id
       const base = id
       let n = 2
-      while (reg.topics.some((t: any) => t.id === id)) id = `${base}-${n++}`
+      while (!same && reg.topics.some((t: any) => t.id === id)) id = `${base}-${n++}`
     } else if (!reg.topics.some((t: any) => t.id === id)) {
       // registry entry was removed upstream — treat as new
     }

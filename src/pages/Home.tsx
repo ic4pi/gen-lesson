@@ -763,6 +763,11 @@ export default function Home() {
         // a 'running' leftover (page reload mid-build) is resumed like a pending one
         const item = queueRef.current.find((x) => x.status === 'pending' || x.status === 'running')
         if (!item || queueStopRef.current) break
+        // already built (e.g. the tab closed after saving but before the queue was updated): don't build it twice
+        if (item.meta && coursesRef.current.some((c) => c.meta?.number === item.meta!.number)) {
+          patchItem(item.id, { status: 'done', progress: undefined })
+          continue
+        }
         patchItem(item.id, { status: 'running', error: undefined })
         const ok = await processItem(item)
         if (queueStopRef.current) {
