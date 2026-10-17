@@ -73,6 +73,7 @@ interface GenOverride {
   topic: string
   notes: string
   meta?: DecimalMeta
+  itemId?: string
   mode?: 'standalone' | 'new'
   series?: Series
   previous?: Course[]
@@ -170,6 +171,7 @@ export default function Home() {
   useEffect(() => localStorage.setItem(LS_REF, refId), [refId])
   useEffect(() => localStorage.setItem(LS_FX, fxOn ? 'on' : 'off'), [fxOn])
   const sizeMemo = useRef<Record<string, number>>({})
+  const plannedSeriesId = useRef<string | null>(null)
   const buildModeRef = useRef(buildMode)
   buildModeRef.current = buildMode
   const refIdRef = useRef(refId)
@@ -355,6 +357,9 @@ export default function Home() {
     const abort = new AbortController()
     abortRef.current = abort
     setGen({ phase: 'planning', message: '', chars: 0, planPreview: null })
+    const prog = (t: string) => {
+      if (ov?.itemId) patchItem(ov.itemId, { progress: t })
+    }
 
     try {
       // ── series resolution ──
@@ -402,6 +407,8 @@ export default function Home() {
         }
         await db.putSeries(series)
         setSeriesList((s) => [...s, series!])
+        plannedSeriesId.current = series.id
+        if (ov?.itemId) patchItem(ov.itemId, { seriesId: series.id })
         part = 1
         if (!ov) setSeriesMode(series.id)
         setGen({ phase: 'writing', message: '', chars: 0, planPreview: plan.parts })
@@ -409,6 +416,8 @@ export default function Home() {
         setGen({ phase: 'writing', message: '', chars: 0, planPreview: null })
       }
 
+      const tag = series && part ? `Part ${part}/${series.plan.length}` : 'Building'
+      prog(`${tag} · creative brief`)
       // ── creative brief: the model writes its own build requirements + art direction ──
       let visual: VisualDirection | null = series?.design ?? null
       let briefText = ''
@@ -466,6 +475,7 @@ export default function Home() {
         { max: Math.min(8000, cap), ref: false },
       ].filter((a, i, arr) => i === 0 || a.max !== arr[i - 1].max || a.ref !== arr[i - 1].ref)
       let acc = ''
+      let lastProg = 0
       let lastErr: any = null
       for (let ai = Math.min(sizeMemo.current[`${model.provider}:${model.id}`] ?? 0, attempts.length - 1); ai < attempts.length; ai++) {
         const at = attempts[ai]
@@ -482,6 +492,10 @@ export default function Home() {
           })) {
             acc += delta
             setGen((g) => ({ ...g, chars: acc.length }))
+            if (acc.length - lastProg > 3000) {
+              lastProg = acc.length
+              prog(`${tag} · writing ${(acc.length / 1000).toFixed(0)}k chars`)
+            }
           }
           lastErr = null
           sizeMemo.current[`${model.provider}:${model.id}`] = ai
@@ -516,12 +530,14 @@ export default function Home() {
       let repairs = 0
       try {
         setGen((g) => ({ ...g, phase: 'assembling', message: 'Testing the page in a browser…' }))
+        prog(`${tag} · testing the page`)
         qa = await runQA(rawFinal)
         while (!qa.passed && repairs < 2 && !abort.signal.aborted) {
           repairs++
           toast.message(`Quality check found ${qa.problems.length} issue(s); repairing (${repairs}/2)`, {
             description: qa.problems.slice(0, 2).join(' · '),
           })
+          prog(`${tag} · repairing (${repairs}/2)`)
           setGen((g) => ({ ...g, phase: 'writing', chars: 0, message: 'Repairing…' }))
           let fixedRaw = ''
           for await (const delta of streamChat({
@@ -551,6 +567,7 @@ export default function Home() {
 
       const fallbackTitle = series ? `${series.title} — Part ${part}` : t
       const finalTitle = parsed.title ?? fallbackTitle
+      prog(`${tag} · finishing`)
       const finished = await finishHtml(
         rawFinal,
         {
@@ -732,11 +749,21 @@ export default function Home() {
   /** Run one generation, retrying transient failures (rate limits, network, bad output). */
   async function genWithRetry(ov: GenOverride): Promise<GenResult | null> {
     for (let attempt = 1; attempt <= 3; attempt++) {
-      const r = await generate(ov)
+      // a retry of "plan + part 1" must reuse the series it already planned, not plan a new one
+      const planned = ov.mode === 'new' && attempt > 1 && plannedSeriesId.current
+        ? seriesRef.current.find((x) => x.id === plannedSeriesId.current)
+        : undefined
+      const r = await generate(
+        planned ? { topic: planned.topic, notes: planned.notes, series: planned, previous: [], itemId: ov.itemId } : ov,
+      )
       if (r) return r
       if (queueStopRef.current) return null
       if (attempt < 3) {
-        toast(`Retrying in ${attempt * 30}s (attempt ${attempt + 1}/3)…`)
+        if (ov.itemId)
+          patchItem(ov.itemId, {
+            progress: `Attempt ${attempt}/3 failed: ${String(lastErrorRef.current || 'unknown error').slice(0, 220)}. Retrying in ${attempt * 30}s`,
+          })
+        toast(`Retrying in ${attempt * 30}s (attempt ${attempt + 1}/3)…`, { description: String(lastErrorRef.current || '').slice(0, 160) })
         await sleep(attempt * 30_000, () => queueStopRef.current)
         if (queueStopRef.current) return null
       }
@@ -745,13 +772,14 @@ export default function Home() {
   }
 
   async function processItem(item: QueueItem): Promise<boolean> {
-    if (item.mode === 'standalone') return !!(await genWithRetry({ topic: item.topic, notes: item.notes, meta: item.meta }))
+    if (item.mode === 'standalone') return !!(await genWithRetry({ topic: item.topic, notes: item.notes, meta: item.meta, itemId: item.id }))
 
     let series = item.seriesId ? (seriesRef.current.find((s) => s.id === item.seriesId) ?? null) : null
     let parts: Course[] = series ? coursesRef.current.filter((c) => c.seriesId === series!.id) : []
     if (!series) {
       patchItem(item.id, { progress: 'Planning series…' })
-      const r = await genWithRetry({ topic: item.topic, notes: item.notes, mode: 'new' })
+      plannedSeriesId.current = null
+      const r = await genWithRetry({ topic: item.topic, notes: item.notes, mode: 'new', itemId: item.id })
       if (!r?.series) return false
       series = r.series
       parts = [r.course]
@@ -760,7 +788,7 @@ export default function Home() {
     while (parts.length < series.plan.length) {
       patchItem(item.id, { progress: `Part ${parts.length + 1}/${series.plan.length}` })
       if (queueStopRef.current) return false
-      const r = await genWithRetry({ topic: series.topic, notes: series.notes, series, previous: parts })
+      const r = await genWithRetry({ topic: series.topic, notes: series.notes, series, previous: parts, itemId: item.id })
       if (!r) return false
       parts = [...parts, r.course]
     }
