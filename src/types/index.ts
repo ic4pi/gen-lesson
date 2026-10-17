@@ -9,6 +9,8 @@ export interface ModelOption {
   tier: Tier
   bestFor: string
   custom?: boolean
+  /** hard cap on output tokens, when the model has one */
+  maxOut?: number
 }
 
 export interface PlanPart {

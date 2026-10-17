@@ -169,6 +169,7 @@ export default function Home() {
   useEffect(() => localStorage.setItem(LS_BUILDMODE, buildMode), [buildMode])
   useEffect(() => localStorage.setItem(LS_REF, refId), [refId])
   useEffect(() => localStorage.setItem(LS_FX, fxOn ? 'on' : 'off'), [fxOn])
+  const sizeMemo = useRef<Record<string, number>>({})
   const buildModeRef = useRef(buildMode)
   buildModeRef.current = buildMode
   const refIdRef = useRef(refId)
@@ -444,35 +445,62 @@ export default function Home() {
 
       const referenceText = buildModeRef.current === 'single' ? await loadReference(refIdRef.current) : null
 
-      // ── write the course ──
+      // ── write the course (shrinks the request automatically if the provider rejects it) ──
+      const buildPrompt = (withRef: boolean) =>
+        coursePrompt({
+          topic: effTopic,
+          notes: briefText ? `${effNotes}\n\nBUILD REQUIREMENTS FROM THE CREATIVE DIRECTOR (treat as mandatory):\n${briefText}` : effNotes,
+          series,
+          part,
+          previousParts,
+          visual,
+          mode: buildModeRef.current,
+          reference: withRef ? referenceText : null,
+          fx: fxRef.current,
+        })
+      const cap = model.maxOut ?? 32000
+      const attempts = [
+        { max: Math.min(32000, cap), ref: true },
+        { max: Math.min(16000, cap), ref: true },
+        { max: Math.min(12000, cap), ref: false },
+        { max: Math.min(8000, cap), ref: false },
+      ].filter((a, i, arr) => i === 0 || a.max !== arr[i - 1].max || a.ref !== arr[i - 1].ref)
       let acc = ''
-      for await (const delta of streamChat({
-        provider: model.provider,
-        apiKey,
-        model: model.id,
-        messages: [
-          {
-            role: 'user',
-            content: coursePrompt({
-              topic: effTopic,
-              notes: briefText ? `${effNotes}\n\nBUILD REQUIREMENTS FROM THE CREATIVE DIRECTOR (treat as mandatory):\n${briefText}` : effNotes,
-              series,
-              part,
-              previousParts,
-              visual,
-              mode: buildModeRef.current,
-              reference: referenceText,
-              fx: fxRef.current,
-            }),
-          },
-        ],
-        maxTokens: 32000,
-        temperature: 0.7,
-        signal: abort.signal,
-      })) {
-        acc += delta
-        setGen((g) => ({ ...g, chars: acc.length }))
+      let lastErr: any = null
+      for (let ai = Math.min(sizeMemo.current[`${model.provider}:${model.id}`] ?? 0, attempts.length - 1); ai < attempts.length; ai++) {
+        const at = attempts[ai]
+        acc = ''
+        try {
+          for await (const delta of streamChat({
+            provider: model.provider,
+            apiKey,
+            model: model.id,
+            messages: [{ role: 'user', content: buildPrompt(at.ref) }],
+            maxTokens: at.max,
+            temperature: 0.7,
+            signal: abort.signal,
+          })) {
+            acc += delta
+            setGen((g) => ({ ...g, chars: acc.length }))
+          }
+          lastErr = null
+          sizeMemo.current[`${model.provider}:${model.id}`] = ai
+          break
+        } catch (e: any) {
+          lastErr = e
+          if (e?.name === 'AbortError') throw e
+          // 400/413/422: the request itself was refused (too long, output limit too high): retry smaller
+          if ([400, 413, 422].includes(e?.status) && ai < attempts.length - 1) {
+            const nx = attempts[ai + 1]
+            toast.message(`${model.label} refused the request; retrying smaller`, {
+              description: `${String(e.detail ?? e.message).slice(0, 140)} → output limit ${nx.max}${nx.ref ? '' : ', no style reference'}`,
+            })
+            continue
+          }
+          throw e
+        }
       }
+      if (lastErr) throw lastErr
 
       // ── assemble ──
       setGen((g) => ({ ...g, phase: 'assembling', message: 'Extracting the document…' }))

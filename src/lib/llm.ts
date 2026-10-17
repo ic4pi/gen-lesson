@@ -8,6 +8,13 @@ export interface ChatMessage {
 }
 
 function friendlyError(status: number, body: string, provider: ProviderId): Error {
+  const e = friendlyErrorBase(status, body, provider) as Error & { status?: number; detail?: string }
+  e.status = status
+  e.detail = body.slice(0, 400)
+  return e
+}
+
+function friendlyErrorBase(status: number, body: string, provider: ProviderId): Error {
   let detail = ''
   try {
     const j = JSON.parse(body)

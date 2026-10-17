@@ -89,6 +89,7 @@ export const DEFAULT_MODELS: ModelOption[] = [
     provider: 'venice',
     tier: 'uncensored',
     bestFor: 'The truly uncensored one — occult, fringe, no refusals. 8K output cap: expect shorter courses',
+    maxOut: 8000,
   },
   {
     id: 'qwen3-235b-a22b-thinking-2507',
