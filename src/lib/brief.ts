@@ -28,7 +28,6 @@ Return ONLY this JSON:
     "chapters": [{"title": "...", "mustCover": ["specific people, texts, terms, mechanisms, dates"]}],
     "hiddenKnowledge": ["6-10 specific lesser-known but VERIFIABLE facts, primary sources, original-language terms, neglected figures or genuine scholarly disputes this course must include"],
     "misconceptions": ["common myths to correct"],
-    "stories": [{"chapter": "chapter title", "kind": "Myth|History|Account", "story": "the specific real story to retell", "source": "who recorded it and in which work"}],
     "interactives": ["6-8 specific working interactive features tailored to THIS topic (not generic), e.g. 'rotatable correspondence wheel mapping planets to metals and days'"]
   }${
     opts.needVisual
@@ -102,10 +101,6 @@ export async function makeBrief(opts: {
     arr(c.outcomes).length && `Learning outcomes:\n${arr(c.outcomes).map((x) => `- ${x}`).join('\n')}`,
     chapters && `Chapter plan (follow it):\n${chapters}`,
     arr(c.hiddenKnowledge).length && `Hidden knowledge that MUST appear (verify; only keep what you can stand behind):\n${arr(c.hiddenKnowledge).map((x) => `- ${x}`).join('\n')}`,
-    Array.isArray(c.stories) && c.stories.length &&
-      `Stories to retell, one opening each chapter (real and traceable; verify before using):\n${c.stories
-        .map((x: any) => `- ${x?.chapter ?? ''}: [${x?.kind ?? 'History'}] ${x?.story ?? ''} (source: ${x?.source ?? 'unspecified'})`)
-        .join('\n')}`,
     arr(c.misconceptions).length && `Misconceptions to correct:\n${arr(c.misconceptions).map((x) => `- ${x}`).join('\n')}`,
     arr(c.interactives).length && `Interactive features to build (all must work):\n${arr(c.interactives).map((x) => `- ${x}`).join('\n')}`,
   ]
