@@ -56,8 +56,9 @@ export default function SettingsDialog({ open, onOpenChange, keys, setKeys, mode
             <KeyRound className="h-4 w-4 text-primary" /> API Keys
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Keys are stored only in this browser's local storage and sent directly from your
-            browser to each provider. Nothing passes through any other server.
+            Keys are stored only in this browser's local storage and sent from your browser to each
+            provider. NVIDIA requests pass through this site's own /nvidia proxy (browsers can't
+            call NVIDIA directly); nothing is stored there.
           </DialogDescription>
         </DialogHeader>
 
@@ -113,7 +114,7 @@ export default function SettingsDialog({ open, onOpenChange, keys, setKeys, mode
               className="h-9 w-full rounded-md border border-input bg-secondary px-2 text-xs"
             >
               <option value="">
-                {n === 0 ? 'Reviewer: free default (OpenRouter)' : 'Fallback: free default (NVIDIA)'}
+                {n === 0 ? 'Reviewer: free default (OpenRouter)' : 'Fallback: auto (opposite provider, free)'}
               </option>
               {FREE_REVIEWERS.map((f) => (
                 <option key={f.id} value={f.id}>

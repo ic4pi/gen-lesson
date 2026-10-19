@@ -1289,8 +1289,8 @@ export default function Home() {
 
         <footer className="mt-16 border-t border-border pt-6">
           <p className="font-mono2 text-[11px] leading-relaxed text-muted-foreground">
-            Your keys, courses and series never leave this browser — calls go straight to the
-            provider you chose. Clearing browser data wipes the library, so export a backup
+            Your keys, courses and series never leave this browser — calls go to the
+            provider you chose (NVIDIA via this site's /nvidia proxy). Clearing browser data wipes the library, so export a backup
             regularly.
           </p>
         </footer>

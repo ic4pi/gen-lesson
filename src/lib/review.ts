@@ -166,12 +166,12 @@ function parseRef(ref: string, models: ModelOption[]): ModelOption | null {
 
 /** Ordered reviewer chain (primary, then fallback) that actually has an API key. */
 export function resolveReviewers(cfg: PublishConfig, models: ModelOption[], keys: Keys) {
-  // configured pair first, then the free defaults so a different provider is always tried last
-  const refs = [
-    cfg.reviewerModelId || FREE_REVIEWERS[0].id,
-    cfg.reviewerFallbackId || FREE_REVIEWERS[1].id,
-    ...FREE_REVIEWERS.map((f) => f.id),
-  ]
+  // fallback is always the opposite provider (NVIDIA <-> OpenRouter) unless you pinned a model on another provider
+  const primary = cfg.reviewerModelId || FREE_REVIEWERS[0].id
+  const provider = primary.slice(0, primary.indexOf(':'))
+  const opposite = FREE_REVIEWERS.find((f) => !f.id.startsWith(provider + ':')) ?? FREE_REVIEWERS[1]
+  const pinned = cfg.reviewerFallbackId && !cfg.reviewerFallbackId.startsWith(provider + ':')
+  const refs = [primary, pinned ? cfg.reviewerFallbackId! : opposite.id, ...FREE_REVIEWERS.map((f) => f.id)]
   const seen = new Set<string>()
   const out: { model: ModelOption; apiKey: string }[] = []
   for (const r of refs) {
