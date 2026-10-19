@@ -146,6 +146,34 @@ export function validateForHexpo(html: string, slug: string, minWords = 1800): s
   return p
 }
 
+/** Deterministic fixes for hexpo's rules: external scripts/links removed, viewport/title added. */
+export function sanitizeForHexpo(html: string, title: string): { html: string; removed: string[] } {
+  const removed: string[] = []
+  let out = html
+  // external <script src> (with or without body) — hexpo forbids them
+  out = out.replace(/<script\b[^>]*\bsrc=["']?([^"'\s>]+)[^>]*>\s*<\/script>/gi, (_m, src) => {
+    removed.push(src)
+    return ''
+  })
+  out = out.replace(/<script\b[^>]*\bsrc=["']?([^"'\s>]+)[^>]*\/>/gi, (_m, src) => {
+    removed.push(src)
+    return ''
+  })
+  // external links other than Google Fonts
+  out = out.replace(/<link\b[^>]*href=["'](https?:[^"']+)["'][^>]*>/gi, (m, href) => {
+    if (/^https:\/\/fonts\.(googleapis|gstatic)\.com(\/|$)/.test(href)) return m
+    removed.push(href)
+    return ''
+  })
+  if (!/<meta[^>]+name=["']viewport["']/i.test(out))
+    out = out.replace(/<head[^>]*>/i, (m) => m + '<meta name="viewport" content="width=device-width, initial-scale=1">')
+  if (!/<title>[^<]+<\/title>/i.test(out)) {
+    const t = `<title>${title.replace(/[<>&]/g, '')}</title>`
+    out = /<title>\s*<\/title>/i.test(out) ? out.replace(/<title>\s*<\/title>/i, t) : out.replace(/<head[^>]*>/i, (m) => m + t)
+  }
+  return { html: out, removed }
+}
+
 /** Namespaces localStorage under hx:<slug>: so courses can't collide on the live site. */
 export function prefixStorage(html: string, slug: string): string {
   if (!/localStorage/.test(html) || html.includes(`hx:${slug}:`)) return html
@@ -225,7 +253,9 @@ export async function publishCourse(
     if (!tax.formats.some((f) => f.id === review.meta.format))
       throw new Error(`Format "${review.meta.format}" is not in hexpo's taxonomy — re-run review.`)
 
-    const html = prefixStorage(course.html, id)
+    const clean = sanitizeForHexpo(course.html, course.title)
+    if (clean.removed.length) onStatus(`Removed ${clean.removed.length} external resource(s) hexpo forbids: ${clean.removed.join(', ').slice(0, 160)}`)
+    const html = prefixStorage(clean.html, id)
     const problems = validateForHexpo(html, id)
     if (problems.length)
       throw new Error(`Won't publish — hexpo's checks fail:\n• ${problems.join('\n• ')}`)
