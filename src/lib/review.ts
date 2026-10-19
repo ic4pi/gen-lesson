@@ -166,7 +166,12 @@ function parseRef(ref: string, models: ModelOption[]): ModelOption | null {
 
 /** Ordered reviewer chain (primary, then fallback) that actually has an API key. */
 export function resolveReviewers(cfg: PublishConfig, models: ModelOption[], keys: Keys) {
-  const refs = [cfg.reviewerModelId || FREE_REVIEWERS[0].id, cfg.reviewerFallbackId || FREE_REVIEWERS[1].id]
+  // configured pair first, then the free defaults so a different provider is always tried last
+  const refs = [
+    cfg.reviewerModelId || FREE_REVIEWERS[0].id,
+    cfg.reviewerFallbackId || FREE_REVIEWERS[1].id,
+    ...FREE_REVIEWERS.map((f) => f.id),
+  ]
   const seen = new Set<string>()
   const out: { model: ModelOption; apiKey: string }[] = []
   for (const r of refs) {

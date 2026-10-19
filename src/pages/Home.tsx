@@ -1067,7 +1067,7 @@ export default function Home() {
 
   async function publishFromLibrary(c: Course) {
     try {
-      await reviewAndPublish(c)
+      await publishCurrent(c) // manual publish: never calls a reviewer
     } catch (e: any) {
       toast.error(e?.message ?? 'Publish failed', { duration: 9000 })
     }
@@ -1079,7 +1079,8 @@ export default function Home() {
     let ok = 0
     for (const c of todo) {
       try {
-        if (await reviewAndPublish(c)) ok++
+        await publishCurrent(c)
+        ok++
       } catch (e: any) {
         toast.error(`${c.title}: ${e?.message ?? 'failed'}`, { duration: 9000 })
       }
