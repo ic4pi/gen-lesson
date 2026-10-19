@@ -13,7 +13,6 @@ import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { PROVIDERS } from '@/lib/models'
 import { listModels } from '@/lib/llm'
-import { FREE_REVIEWERS } from '@/lib/review'
 import type { Keys, ModelOption, ProviderId, PublishConfig } from '@/types'
 
 interface Props {
@@ -114,13 +113,8 @@ export default function SettingsDialog({ open, onOpenChange, keys, setKeys, mode
               className="h-9 w-full rounded-md border border-input bg-secondary px-2 text-xs"
             >
               <option value="">
-                {n === 0 ? 'Reviewer: free default (OpenRouter)' : 'Fallback: auto (opposite provider, free)'}
+                {n === 0 ? 'Reviewer: auto (free models found live, OpenRouter first)' : 'Fallback: auto (free models on the other provider)'}
               </option>
-              {FREE_REVIEWERS.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.label}
-                </option>
-              ))}
               {models.map((m) => (
                 <option key={`${m.provider}:${m.id}`} value={`${m.provider}:${m.id}`}>
                   {m.label} — {PROVIDERS[m.provider].label}
