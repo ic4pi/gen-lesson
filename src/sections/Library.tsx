@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { Archive, Download, Eye, Layers, Trash2, Upload } from 'lucide-react'
+import { Archive, Download, Eye, Layers, Rocket, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { Course, Series } from '@/types'
 import { downloadCourse } from '@/lib/download'
@@ -8,6 +8,8 @@ interface Props {
   courses: Course[]
   seriesList: Series[]
   onPreview: (c: Course) => void
+  onPublish: (c: Course) => void
+  onPublishAll: () => void
   onDeleteCourse: (id: string) => void
   onDeleteSeries: (id: string) => void
   onExport: () => void
@@ -25,6 +27,9 @@ export default function Library(p: Props) {
       <div className="mb-4 flex items-center justify-between">
         <h2 className="font-display text-xl font-semibold tracking-tight">Library</h2>
         <div className="flex gap-2">
+          <Button size="sm" onClick={p.onPublishAll} title="Review, fix and push every unpublished course to hexpo">
+            <Rocket className="mr-1.5 h-3.5 w-3.5" /> Publish all
+          </Button>
           <Button variant="outline" size="sm" onClick={p.onExport}>
             <Archive className="mr-1.5 h-3.5 w-3.5" /> Export backup
           </Button>
@@ -112,6 +117,9 @@ export default function Library(p: Props) {
                               <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => p.onPreview(built)}>
                                 <Eye className="mr-1 h-3 w-3" /> View
                               </Button>
+                              <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => p.onPublish(built)}>
+                                <Rocket className="mr-1 h-3 w-3" /> {built.published ? 'Republish' : 'Publish'}
+                              </Button>
                               <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => downloadCourse(built)}>
                                 <Download className="mr-1 h-3 w-3" /> .html
                               </Button>
@@ -147,6 +155,9 @@ export default function Library(p: Props) {
                   <div className="mt-3 flex gap-1.5">
                     <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => p.onPreview(c)}>
                       <Eye className="mr-1 h-3 w-3" /> View
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => p.onPublish(c)}>
+                      <Rocket className="mr-1 h-3 w-3" /> {c.published ? 'Republish' : 'Publish'}
                     </Button>
                     <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => downloadCourse(c)}>
                       <Download className="mr-1 h-3 w-3" /> .html

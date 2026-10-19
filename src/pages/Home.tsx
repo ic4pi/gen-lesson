@@ -895,16 +895,17 @@ export default function Home() {
   }
 
   /** Review → rebuild with the editor's notes → review again, until it passes or rounds run out. */
-  async function autoImprove() {
-    if (!current) return
-    const writer = models.find((m) => m.id === current.modelId && m.provider === current.provider)
-    const writerKey = keys[current.provider].trim()
+  async function autoImprove(target: Course | null = current): Promise<Course | null> {
+    const base = target
+    if (!base) return null
+    const writer = models.find((m) => m.id === base.modelId && m.provider === base.provider)
+    const writerKey = keys[base.provider].trim()
     if (!writer || !writerKey) {
       setSettingsOpen(true)
-      throw new Error(`Rebuilding needs the original writer (${current.modelId}) and its API key`)
+      throw new Error(`Rebuilding needs the original writer (${base.modelId}) and its API key`)
     }
     const rounds = Math.max(1, publish.maxRounds || 3)
-    let cur = await runReview(current)
+    let cur = await runReview(base)
     let best = cur
     for (let round = 1; round <= rounds && !cur.review!.passed; round++) {
       const r = cur.review!
@@ -974,6 +975,7 @@ export default function Home() {
       : toast.warning(`Still not publishable after ${rounds} rebuild(s) — best ${r.valueScore}/100`, {
           description: r.worthIt,
         })
+    return best
   }
 
   async function redesignCurrent() {
@@ -994,16 +996,47 @@ export default function Home() {
     toast.success('Restyled', { description: `Designed by ${fin.designedBy}` })
   }
 
-  async function publishCurrent() {
-    if (!current) return
-    const out = await publishCourse(publish, current, (s) => toast.message(s))
+  async function publishCurrent(target: Course | null = current) {
+    if (!target) return
+    const out = await publishCourse(publish, target, (s) => toast.message(s))
     await saveCourse({
-      ...current,
+      ...target,
       published: { id: out.id, file: out.file, at: Date.now(), commit: out.commit },
     })
     toast.success(out.updated ? 'Updated in hexpo' : 'Pushed to hexpo', {
       description: `${out.file} committed to ${publish.branch}. Your deploy and library rebuild start automatically.`,
     })
+  }
+
+  /** Library one-click: review → rebuild until it passes → push to hexpo. Returns true if published. */
+  async function reviewAndPublish(c: Course): Promise<boolean> {
+    let cur: Course | null = c
+    if (!(cur.review?.passed && cur.review.htmlLength === cur.html.length)) cur = await autoImprove(c)
+    if (!cur?.review?.passed) return false
+    await publishCurrent(cur)
+    return true
+  }
+
+  async function publishFromLibrary(c: Course) {
+    try {
+      await reviewAndPublish(c)
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Publish failed', { duration: 9000 })
+    }
+  }
+
+  async function publishAllUnpublished() {
+    const todo = coursesRef.current.filter((c) => !c.published)
+    if (!todo.length) return toast('Nothing to publish — everything is already in hexpo')
+    let ok = 0
+    for (const c of todo) {
+      try {
+        if (await reviewAndPublish(c)) ok++
+      } catch (e: any) {
+        toast.error(`${c.title}: ${e?.message ?? 'failed'}`, { duration: 9000 })
+      }
+    }
+    toast.success(`Published ${ok} of ${todo.length}`)
   }
 
   // ── library ops ──────────────────────────────────────────
@@ -1156,9 +1189,9 @@ export default function Home() {
               reviewerLabel={reviewer ? reviewer.label : null}
               hexpoRepo={publish.repo}
               onReview={reviewCurrent}
-              onAutoFix={autoImprove}
+              onAutoFix={async () => { await autoImprove() }}
               onRedesign={redesignCurrent}
-              onPublish={publishCurrent}
+              onPublish={() => publishCurrent()}
             />
             {gen.phase === 'error' && (
               <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
@@ -1195,6 +1228,8 @@ export default function Home() {
           courses={courses}
           seriesList={seriesList}
           onPreview={setCurrent}
+          onPublish={publishFromLibrary}
+          onPublishAll={publishAllUnpublished}
           onDeleteCourse={deleteCourse}
           onDeleteSeries={deleteSeries}
           onExport={exportBackup}
