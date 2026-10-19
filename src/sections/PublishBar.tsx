@@ -67,7 +67,7 @@ export default function PublishBar({ course, hexpoRepo, reviewerLabel, onReview,
         <Button
           size="sm"
           className="bg-primary text-primary-foreground hover:bg-primary/90"
-          disabled={busy !== null || !r?.passed || !!stale}
+          disabled={busy !== null}
           onClick={() => run('publish', onPublish)}
         >
           <Rocket className="mr-1.5 h-3.5 w-3.5" />

@@ -100,7 +100,8 @@ export interface PublishConfig {
   branch: string
   dir: string
   token: string
-  reviewerModelId: string // "provider:model"
+  reviewerModelId: string // "provider:model"; empty = free default (OpenRouter)
+  reviewerFallbackId?: string // "provider:model"; empty = free default (NVIDIA)
   threshold: number
   maxRounds: number // auto-rebuild attempts after a failed review
   autoPublish?: boolean // queue: review + publish each course as soon as it is built (default on)
