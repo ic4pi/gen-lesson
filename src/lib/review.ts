@@ -39,6 +39,7 @@ export async function reviewCourse(opts: {
   tax: Taxonomy
   threshold: number
   signal?: AbortSignal
+  timeoutMs?: number
 }): Promise<ReviewResult> {
   const { course, reviewer, apiKey, tax, threshold } = opts
   if (reviewer.id === course.modelId && reviewer.provider === course.provider)
@@ -83,6 +84,7 @@ Return JSON exactly:
     maxTokens: 3000,
     temperature: 0.2,
     signal: opts.signal,
+    timeoutMs: opts.timeoutMs,
   })
   const j = parseReview(raw)
 
@@ -141,11 +143,7 @@ Return JSON exactly:
   }
 }
 
-/** Free-tier reviewers, each the other's fallback. Ids are "provider:model". */
-export const FREE_REVIEWERS: { id: string; label: string }[] = [
-  { id: 'openrouter:meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (free) — OpenRouter' },
-  { id: 'nvidia:meta/llama-3.3-70b-instruct', label: 'Llama 3.3 70B (free) — NVIDIA' },
-]
+type Candidate = { model: ModelOption; apiKey: string }
 
 function parseRef(ref: string, models: ModelOption[]): ModelOption | null {
   const i = ref.indexOf(':')
@@ -164,43 +162,102 @@ function parseRef(ref: string, models: ModelOption[]): ModelOption | null {
   )
 }
 
-/** Ordered reviewer chain (primary, then fallback) that actually has an API key. */
-export function resolveReviewers(cfg: PublishConfig, models: ModelOption[], keys: Keys) {
-  // fallback is always the opposite provider (NVIDIA <-> OpenRouter) unless you pinned a model on another provider
-  const primary = cfg.reviewerModelId || FREE_REVIEWERS[0].id
-  const provider = primary.slice(0, primary.indexOf(':'))
-  const opposite = FREE_REVIEWERS.find((f) => !f.id.startsWith(provider + ':')) ?? FREE_REVIEWERS[1]
-  const pinned = cfg.reviewerFallbackId && !cfg.reviewerFallbackId.startsWith(provider + ':')
-  const refs = [primary, pinned ? cfg.reviewerFallbackId! : opposite.id, ...FREE_REVIEWERS.map((f) => f.id)]
-  const seen = new Set<string>()
-  const out: { model: ModelOption; apiKey: string }[] = []
-  for (const r of refs) {
-    const m = parseRef(r, models)
-    if (!m || seen.has(r)) continue
-    seen.add(r)
-    const apiKey = (keys[m.provider] ?? '').trim()
-    if (apiKey) out.push({ model: m, apiKey })
+// ── live discovery of free reviewer models (hardcoded ids go stale: 404/410) ──
+const NOT_CHAT = /embed|rerank|guard|safety|reward|vision|\bvl\b|-vl-|clip|ocr|parse|retriev|whisper|tts|image|diffusion|moderat|audio|speech|translate|paligemma|deplot|kosmos|neva|fuyu|vila|cosmos|riva|sdxl|stable|flux|bge|nemoguard|lyria|veo/i
+
+function rank(id: string): number {
+  const sizes = [...id.matchAll(/(\d+(?:\.\d+)?)b\b/gi)].map((m) => Number(m[1]))
+  const size = sizes.length ? Math.max(...sizes) : 0
+  // 30-130B models review well without being slow or heavily rate-limited
+  const base = size >= 30 && size <= 130 ? 500 + size : size
+  return base + (/instruct|chat|-it\b/i.test(id) ? 5 : 0)
+}
+
+async function listFree(provider: 'openrouter' | 'nvidia', apiKey: string, signal?: AbortSignal): Promise<string[]> {
+  const res = await fetch(`${PROVIDERS[provider].baseUrl}/models`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: signal ?? AbortSignal.timeout(15_000),
+  })
+  if (!res.ok) throw new Error(String(res.status))
+  const data: any[] = (await res.json())?.data ?? []
+  const ids =
+    provider === 'openrouter'
+      ? data
+          .filter((m) => {
+            const free = String(m.id).endsWith(':free') || (Number(m.pricing?.prompt) === 0 && Number(m.pricing?.completion) === 0)
+            const textOut = (m.architecture?.output_modalities ?? ['text']).join() === 'text'
+            return free && textOut && (m.context_length ?? 0) >= 32_000 && !/^openrouter\//.test(m.id)
+          })
+          .map((m) => String(m.id))
+      : data.map((m) => String(m.id))
+  return ids.filter((id) => !NOT_CHAT.test(id)).sort((x, y) => rank(y) - rank(x)).slice(0, 5)
+}
+
+const discovered = new Map<string, { at: number; ids: string[] }>()
+/** ids that answered 404/410 this session: never tried again */
+const dead = new Set<string>()
+
+async function discover(provider: 'openrouter' | 'nvidia', apiKey: string): Promise<string[]> {
+  const hit = discovered.get(provider)
+  if (hit && Date.now() - hit.at < 30 * 60_000) return hit.ids
+  try {
+    const ids = await listFree(provider, apiKey)
+    discovered.set(provider, { at: Date.now(), ids })
+    return ids
+  } catch {
+    return []
   }
+}
+
+/** Whether any reviewer could be used at all (a free-tier key is set). */
+export function hasReviewerKey(keys: Keys): boolean {
+  return !!(keys.openrouter?.trim() || keys.nvidia?.trim())
+}
+
+/** Reviewer chain: your pinned model first, then live-discovered free models on its provider, then the opposite provider. */
+export async function buildReviewerChain(cfg: PublishConfig, models: ModelOption[], keys: Keys): Promise<Candidate[]> {
+  const key = (p: string) => (keys[p as keyof Keys] ?? '').trim()
+  const pinnedPrimary = cfg.reviewerModelId ? parseRef(cfg.reviewerModelId, models) : null
+  const first = pinnedPrimary?.provider === 'nvidia' ? 'nvidia' : 'openrouter'
+  const order: ('openrouter' | 'nvidia')[] = first === 'nvidia' ? ['nvidia', 'openrouter'] : ['openrouter', 'nvidia']
+  const lists = await Promise.all(order.map((p) => (key(p) ? discover(p, key(p)) : Promise.resolve([] as string[]))))
+  const out: Candidate[] = []
+  const seen = new Set<string>()
+  const add = (m: ModelOption | null) => {
+    if (!m || !key(m.provider)) return
+    const k = `${m.provider}:${m.id}`
+    if (seen.has(k) || dead.has(k)) return
+    seen.add(k)
+    out.push({ model: m, apiKey: key(m.provider) })
+  }
+  add(pinnedPrimary)
+  order.forEach((p, i) => {
+    lists[i].forEach((id) => add(parseRef(`${p}:${id}`, models)))
+    // pinned fallback goes after the first provider's models
+    if (i === 0 && cfg.reviewerFallbackId) add(parseRef(cfg.reviewerFallbackId, models))
+  })
   return out
 }
 
-/** Tries each reviewer in order; throws one clear error listing every failure if all fail. */
+/** Tries each reviewer in order, skipping dead models (404/410); one clear error lists every failure if all fail. */
 export async function reviewWithFallback(opts: {
   course: Course
-  reviewers: { model: ModelOption; apiKey: string }[]
+  reviewers: Candidate[]
   tax: Taxonomy
   threshold: number
   signal?: AbortSignal
+  maxTries?: number
 }): Promise<ReviewResult> {
   if (!opts.reviewers.length)
     throw new Error('No reviewer available — add an OpenRouter or NVIDIA API key in Keys.')
   const failures: string[] = []
-  for (const { model, apiKey } of opts.reviewers) {
+  for (const { model, apiKey } of opts.reviewers.slice(0, opts.maxTries ?? 7)) {
     try {
-      return await reviewCourse({ ...opts, reviewer: model, apiKey })
+      return await reviewCourse({ ...opts, reviewer: model, apiKey, timeoutMs: 90_000 })
     } catch (e: any) {
       if (opts.signal?.aborted) throw e
-      failures.push(`${PROVIDERS[model.provider].label} (${model.id}): ${e?.message ?? 'failed'}`)
+      if (e?.status === 404 || e?.status === 410) dead.add(`${model.provider}:${model.id}`)
+      failures.push(`${PROVIDERS[model.provider].label} ${model.id}: ${String(e?.message ?? 'failed').slice(0, 90)}`)
     }
   }
   throw new Error(`Every reviewer failed — ${failures.join(' | ')}`)

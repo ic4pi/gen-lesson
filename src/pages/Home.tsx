@@ -33,7 +33,7 @@ import {
 } from '@/lib/prompts'
 import { db, uid } from '@/lib/db'
 import { DEFAULT_PUBLISH, loadHexpo, publishCourse } from '@/lib/hexpo'
-import { resolveReviewers, reviewWithFallback } from '@/lib/review'
+import { buildReviewerChain, hasReviewerKey, reviewWithFallback } from '@/lib/review'
 import { closeTruncated, isBroken, repairTruncated } from '@/lib/repair'
 import type {
   Course,
@@ -786,7 +786,7 @@ export default function Home() {
 
   /** Queue hook: review (and rebuild if needed) then push to hexpo. Never fails the build itself. */
   async function autoPublish(c: Course, item?: QueueItem) {
-    if (publish.autoPublish === false || !publish.token.trim() || !reviewers.length) return
+    if (publish.autoPublish === false || !publish.token.trim() || !hasReviewerKey(keys)) return
     try {
       if (item) patchItem(item.id, { progress: `Reviewing & publishing "${c.title}"…` })
       const fresh = coursesRef.current.find((x) => x.id === c.id) ?? c
@@ -926,8 +926,7 @@ export default function Home() {
   }, [libraryLoaded])
 
   // ── review + publish ─────────────────────────────────────
-  const reviewers = resolveReviewers(publish, models, keys)
-  const reviewer = reviewers[0]?.model ?? null
+  const reviewer = hasReviewerKey(keys) ? { label: 'free model (auto-selected)' } : null
 
   async function saveCourse(c: Course) {
     await db.putCourse(c)
@@ -936,6 +935,7 @@ export default function Home() {
   }
 
   async function runReview(c: Course): Promise<Course> {
+    const reviewers = await buildReviewerChain(publish, models, keys)
     if (!reviewers.length) {
       setSettingsOpen(true)
       throw new Error('Add an OpenRouter or NVIDIA API key for the free reviewer')
