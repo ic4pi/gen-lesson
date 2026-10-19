@@ -1,5 +1,5 @@
 // GitHub access for the hexpo library repo: read registry/taxonomy, validate, publish in one commit.
-import type { Course, PublishConfig } from '@/types'
+import type { Course, PublishConfig, ReviewResult } from '@/types'
 
 export interface Taxonomy {
   categories: { id: string; label: string; blurb: string }[]
@@ -19,6 +19,7 @@ export const DEFAULT_PUBLISH: PublishConfig = {
   dir: 'masterclasses',
   token: '',
   reviewerModelId: '',
+  reviewerFallbackId: '',
   threshold: 75,
   maxRounds: 3,
 }
@@ -26,15 +27,27 @@ export const DEFAULT_PUBLISH: PublishConfig = {
 const API = 'https://api.github.com'
 
 async function gh(cfg: PublishConfig, path: string, init?: RequestInit) {
-  const res = await fetch(`${API}/repos/${cfg.repo}${path}`, {
-    ...init,
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${cfg.token}`,
-      'X-GitHub-Api-Version': '2022-11-28',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-    },
-  })
+  let res: Response | undefined
+  for (let n = 1; !res; n++) {
+    try {
+      res = await fetch(`${API}/repos/${cfg.repo}${path}`, {
+        ...init,
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `Bearer ${cfg.token}`,
+          'X-GitHub-Api-Version': '2022-11-28',
+          ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+        },
+      })
+    } catch (e: any) {
+      // fetch() rejects with a bare TypeError on dropped connections ("network error when attempting to fetch resources")
+      if (n < 3) {
+        await new Promise((r) => setTimeout(r, 800 * n))
+        continue
+      }
+      throw new Error(`Couldn't reach GitHub (${e?.message ?? 'network error'}). Check your connection and retry.`)
+    }
+  }
   if (!res.ok) {
     let msg = ''
     try {
@@ -142,6 +155,34 @@ export function prefixStorage(html: string, slug: string): string {
     : html.replace(/<html[^>]*>/i, (m) => m + shim)
 }
 
+/** Catalogue metadata for a course published without an AI review. */
+function fallbackReview(course: Course, tax: Taxonomy): ReviewResult {
+  const m = course.meta
+  const blurb = (course.summary || course.topic).replace(/\s+/g, ' ').trim().slice(0, 220)
+  return {
+    reviewerModelId: 'none',
+    reviewerProvider: course.provider,
+    reviewedAt: Date.now(),
+    htmlLength: course.html.length,
+    valueScore: 0,
+    scores: { accuracy: 0, insight: 0, depth: 0, originality: 0, structure: 0, interactivity: 0 },
+    verdict: 'publish',
+    worthIt: '',
+    strengths: [],
+    issues: [],
+    passed: true,
+    threshold: 0,
+    meta: {
+      category: tax.categories[0].id,
+      format: tax.formats[0].id,
+      kicker: m ? `${m.number} · ${m.division.replace(/^\d+\s*/, '')}` : 'masterclass',
+      blurb,
+      covers: course.topicsCovered.slice(0, 7),
+      concepts: [],
+    },
+  }
+}
+
 export interface PublishOutcome {
   id: string
   file: string
@@ -155,10 +196,8 @@ export async function publishCourse(
   course: Course,
   onStatus: (s: string) => void = () => {},
 ): Promise<PublishOutcome> {
-  const review = course.review
-  if (!review?.passed) throw new Error('This course has not passed review.')
-  if (review.htmlLength !== course.html.length)
-    throw new Error('The HTML changed after review — run the review again.')
+  // Manual publish needs no AI review: use the review's metadata when it is current, else derive it.
+  const reviewed = course.review && course.review.htmlLength === course.html.length ? course.review : undefined
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     onStatus(attempt === 1 ? 'Reading hexpo registry…' : `Registry moved — retrying (${attempt}/3)…`)
@@ -180,6 +219,7 @@ export async function publishCourse(
     }
     const file = `${id}.html`
 
+    const review = reviewed ?? fallbackReview(course, tax)
     if (!tax.categories.some((c) => c.id === review.meta.category))
       throw new Error(`Category "${review.meta.category}" is not in hexpo's taxonomy — re-run review.`)
     if (!tax.formats.some((f) => f.id === review.meta.format))
@@ -207,7 +247,7 @@ export async function publishCourse(
       generated: true,
       source: 'masterclass-foundry',
       model: course.modelId,
-      reviewScore: review.valueScore,
+      ...(reviewed ? { reviewScore: review.valueScore } : {}),
       ...(m ? { number: m.number, decimalClass: m.cls, decimalDivision: m.division, decimalKind: m.kind, wave: m.wave } : {}),
       words: visibleWords(html),
       bytes: new TextEncoder().encode(html).length,
@@ -245,7 +285,7 @@ export async function publishCourse(
     const commit = await gh(cfg, '/git/commits', {
       method: 'POST',
       body: JSON.stringify({
-        message: `masterclasses: ${updated ? 'update' : 'add'} ${course.title} (Foundry, review ${review.valueScore}/100)`,
+        message: `masterclasses: ${updated ? 'update' : 'add'} ${course.title} (Foundry${reviewed ? `, review ${review.valueScore}/100` : ''})`,
         tree: tree.sha,
         parents: [parentSha],
       }),

@@ -33,7 +33,7 @@ import {
 } from '@/lib/prompts'
 import { db, uid } from '@/lib/db'
 import { DEFAULT_PUBLISH, loadHexpo, publishCourse } from '@/lib/hexpo'
-import { reviewCourse } from '@/lib/review'
+import { resolveReviewers, reviewWithFallback } from '@/lib/review'
 import type {
   Course,
   GenState,
@@ -773,7 +773,7 @@ export default function Home() {
 
   /** Queue hook: review (and rebuild if needed) then push to hexpo. Never fails the build itself. */
   async function autoPublish(c: Course, item?: QueueItem) {
-    if (publish.autoPublish === false || !publish.token.trim() || !reviewer) return
+    if (publish.autoPublish === false || !publish.token.trim() || !reviewers.length) return
     try {
       if (item) patchItem(item.id, { progress: `Reviewing & publishing "${c.title}"…` })
       const fresh = coursesRef.current.find((x) => x.id === c.id) ?? c
@@ -913,7 +913,8 @@ export default function Home() {
   }, [libraryLoaded])
 
   // ── review + publish ─────────────────────────────────────
-  const reviewer = models.find((m) => `${m.provider}:${m.id}` === publish.reviewerModelId) ?? null
+  const reviewers = resolveReviewers(publish, models, keys)
+  const reviewer = reviewers[0]?.model ?? null
 
   async function saveCourse(c: Course) {
     await db.putCourse(c)
@@ -922,14 +923,12 @@ export default function Home() {
   }
 
   async function runReview(c: Course): Promise<Course> {
-    if (!reviewer) throw new Error('Pick a reviewer model in Keys → Publish')
-    const apiKey = keys[reviewer.provider].trim()
-    if (!apiKey) {
+    if (!reviewers.length) {
       setSettingsOpen(true)
-      throw new Error(`Add your ${PROVIDERS[reviewer.provider].label} API key for the reviewer`)
+      throw new Error('Add an OpenRouter or NVIDIA API key for the free reviewer')
     }
     const { tax } = await loadHexpo(publish)
-    const review = await reviewCourse({ course: c, reviewer, apiKey, tax, threshold: publish.threshold })
+    const review = await reviewWithFallback({ course: c, reviewers, tax, threshold: publish.threshold })
     const next = { ...c, review }
     await saveCourse(next)
     return next

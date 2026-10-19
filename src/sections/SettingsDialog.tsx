@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { PROVIDERS } from '@/lib/models'
 import { listModels } from '@/lib/llm'
+import { FREE_REVIEWERS } from '@/lib/review'
 import type { Keys, ModelOption, ProviderId, PublishConfig } from '@/types'
 
 interface Props {
@@ -101,21 +102,31 @@ export default function SettingsDialog({ open, onOpenChange, keys, setKeys, mode
         <div className="space-y-3 border-t border-border pt-4">
           <Label className="label-mono">Review &amp; publish to hexpo</Label>
           <p className="text-[11px] text-muted-foreground">
-            A second, different model reviews each course. Only passing courses can be committed
-            to your hexpo repo's masterclasses folder, which triggers your redeploy.
+            New courses are auto-reviewed by a free model (primary, then fallback if it fails) and
+            auto-published when they pass. Manual publish needs no review.
           </p>
-          <select
-            value={publish.reviewerModelId}
-            onChange={(e) => setPublish({ ...publish, reviewerModelId: e.target.value })}
-            className="h-9 w-full rounded-md border border-input bg-secondary px-2 text-xs"
-          >
-            <option value="">Reviewer model…</option>
-            {models.map((m) => (
-              <option key={`${m.provider}:${m.id}`} value={`${m.provider}:${m.id}`}>
-                {m.label} — {PROVIDERS[m.provider].label}
+          {(['reviewerModelId', 'reviewerFallbackId'] as const).map((field, n) => (
+            <select
+              key={field}
+              value={publish[field] ?? ''}
+              onChange={(e) => setPublish({ ...publish, [field]: e.target.value })}
+              className="h-9 w-full rounded-md border border-input bg-secondary px-2 text-xs"
+            >
+              <option value="">
+                {n === 0 ? 'Reviewer: free default (OpenRouter)' : 'Fallback: free default (NVIDIA)'}
               </option>
-            ))}
-          </select>
+              {FREE_REVIEWERS.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+              {models.map((m) => (
+                <option key={`${m.provider}:${m.id}`} value={`${m.provider}:${m.id}`}>
+                  {m.label} — {PROVIDERS[m.provider].label}
+                </option>
+              ))}
+            </select>
+          ))}
           <div className="grid grid-cols-[1fr_90px] gap-2">
             <Input
               value={publish.repo}
