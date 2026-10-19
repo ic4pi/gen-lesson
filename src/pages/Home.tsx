@@ -772,15 +772,45 @@ export default function Home() {
   }
 
   /** Queue hook: review (and rebuild if needed) then push to hexpo. Never fails the build itself. */
-  async function autoPublish(c: Course, item: QueueItem) {
+  async function autoPublish(c: Course, item?: QueueItem) {
     if (publish.autoPublish === false || !publish.token.trim() || !reviewer) return
     try {
-      patchItem(item.id, { progress: `Reviewing & publishing "${c.title}"…` })
+      if (item) patchItem(item.id, { progress: `Reviewing & publishing "${c.title}"…` })
       const fresh = coursesRef.current.find((x) => x.id === c.id) ?? c
       const ok = await reviewAndPublish(fresh)
       if (!ok) toast.warning(`"${c.title}" didn't pass review — kept in your Library, not published`)
     } catch (e: any) {
       toast.error(`Publish failed for "${c.title}": ${e?.message ?? 'error'}`, { duration: 9000 })
+    }
+  }
+
+  const [buildingSeries, setBuildingSeries] = useState<string | null>(null)
+
+  /** Library: build every pending part of a series, in order, auto-publishing each. */
+  async function buildRemaining(seriesId: string) {
+    if (buildingSeries || queueRunning) return void toast.error('Something is already building')
+    const model = models.find((m) => `${m.provider}:${m.id}` === modelRef.current)
+    if (!model) return void toast.error('Pick a model')
+    if (!keysRef.current[model.provider].trim()) {
+      setSettingsOpen(true)
+      return void toast.error(`Add your ${PROVIDERS[model.provider].label} API key first`)
+    }
+    const series = seriesRef.current.find((x) => x.id === seriesId)
+    if (!series) return
+    queueStopRef.current = false
+    setBuildingSeries(seriesId)
+    try {
+      let parts = coursesRef.current.filter((c) => c.seriesId === seriesId)
+      while (parts.length < series.plan.length && !queueStopRef.current) {
+        toast.message(`${series.title}: building part ${parts.length + 1}/${series.plan.length}`)
+        const r = await genWithRetry({ topic: series.topic, notes: series.notes, series, previous: parts })
+        if (!r) return void toast.error(`Stopped at part ${parts.length + 1} — ${String(lastErrorRef.current || 'build failed').slice(0, 160)}`)
+        parts = [...parts, r.course]
+        await autoPublish(r.course)
+      }
+      if (parts.length >= series.plan.length) toast.success(`${series.title}: all ${series.plan.length} parts built`)
+    } finally {
+      setBuildingSeries(null)
     }
   }
 
@@ -1249,6 +1279,8 @@ export default function Home() {
           onPreview={setCurrent}
           onPublish={publishFromLibrary}
           onPublishAll={publishAllUnpublished}
+          onBuildRemaining={buildRemaining}
+          buildingSeries={buildingSeries}
           onDeleteCourse={deleteCourse}
           onDeleteSeries={deleteSeries}
           onExport={exportBackup}

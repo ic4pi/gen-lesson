@@ -10,6 +10,8 @@ interface Props {
   onPreview: (c: Course) => void
   onPublish: (c: Course) => void
   onPublishAll: () => void
+  onBuildRemaining: (seriesId: string) => void
+  buildingSeries: string | null
   onDeleteCourse: (id: string) => void
   onDeleteSeries: (id: string) => void
   onExport: () => void
@@ -77,6 +79,18 @@ export default function Library(p: Props) {
                         </p>
                       </div>
                     </div>
+                    <div className="flex items-center gap-1">
+                    {parts.length < s.plan.length && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={p.buildingSeries !== null}
+                        onClick={() => p.onBuildRemaining(s.id)}
+                      >
+                        <Layers className="mr-1.5 h-3.5 w-3.5" />
+                        {p.buildingSeries === s.id ? 'Building…' : `Build remaining (${s.plan.length - parts.length})`}
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -85,6 +99,7 @@ export default function Library(p: Props) {
                     >
                       <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete series
                     </Button>
+                    </div>
                   </div>
 
                   {/* plan rail */}
