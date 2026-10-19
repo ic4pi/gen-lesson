@@ -137,6 +137,14 @@ export default function SettingsDialog({ open, onOpenChange, keys, setKeys, mode
             placeholder="GitHub fine-grained token (Contents: read and write on the repo)"
             className="border-input bg-secondary font-mono2 text-xs"
           />
+          <label className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={publish.autoPublish !== false}
+              onChange={(e) => setPublish({ ...publish, autoPublish: e.target.checked })}
+            />
+            Auto-publish: review and push each queued course to hexpo as soon as it is built
+          </label>
           <div className="flex items-center gap-2">
             <Label className="text-[11px] text-muted-foreground">Pass score</Label>
             <Input

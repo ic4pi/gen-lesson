@@ -771,8 +771,25 @@ export default function Home() {
     return null
   }
 
+  /** Queue hook: review (and rebuild if needed) then push to hexpo. Never fails the build itself. */
+  async function autoPublish(c: Course, item: QueueItem) {
+    if (publish.autoPublish === false || !publish.token.trim() || !reviewer) return
+    try {
+      patchItem(item.id, { progress: `Reviewing & publishing "${c.title}"…` })
+      const fresh = coursesRef.current.find((x) => x.id === c.id) ?? c
+      const ok = await reviewAndPublish(fresh)
+      if (!ok) toast.warning(`"${c.title}" didn't pass review — kept in your Library, not published`)
+    } catch (e: any) {
+      toast.error(`Publish failed for "${c.title}": ${e?.message ?? 'error'}`, { duration: 9000 })
+    }
+  }
+
   async function processItem(item: QueueItem): Promise<boolean> {
-    if (item.mode === 'standalone') return !!(await genWithRetry({ topic: item.topic, notes: item.notes, meta: item.meta, itemId: item.id }))
+    if (item.mode === 'standalone') {
+      const r = await genWithRetry({ topic: item.topic, notes: item.notes, meta: item.meta, itemId: item.id })
+      if (r) await autoPublish(r.course, item)
+      return !!r
+    }
 
     let series = item.seriesId ? (seriesRef.current.find((s) => s.id === item.seriesId) ?? null) : null
     let parts: Course[] = series ? coursesRef.current.filter((c) => c.seriesId === series!.id) : []
@@ -784,6 +801,7 @@ export default function Home() {
       series = r.series
       parts = [r.course]
       patchItem(item.id, { seriesId: series.id })
+      await autoPublish(r.course, item)
     }
     while (parts.length < series.plan.length) {
       patchItem(item.id, { progress: `Part ${parts.length + 1}/${series.plan.length}` })
@@ -791,6 +809,7 @@ export default function Home() {
       const r = await genWithRetry({ topic: series.topic, notes: series.notes, series, previous: parts, itemId: item.id })
       if (!r) return false
       parts = [...parts, r.course]
+      await autoPublish(r.course, item)
     }
     return true
   }

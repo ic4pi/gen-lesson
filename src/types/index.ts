@@ -103,6 +103,7 @@ export interface PublishConfig {
   reviewerModelId: string // "provider:model"
   threshold: number
   maxRounds: number // auto-rebuild attempts after a failed review
+  autoPublish?: boolean // queue: review + publish each course as soon as it is built (default on)
 }
 
 export type Keys = Record<ProviderId, string>
