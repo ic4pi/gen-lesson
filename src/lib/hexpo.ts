@@ -146,6 +146,46 @@ export function validateForHexpo(html: string, slug: string, minWords = 1800): s
   return p
 }
 
+/** Fetch each external <script src> and put its code inline, so the course keeps working. Libraries that use
+ *  network APIs hexpo bans are not inlined (that would fail its check); those and failed fetches are left for sanitizeForHexpo to strip. */
+export async function inlineExternalScripts(
+  html: string,
+): Promise<{ html: string; inlined: string[]; failed: string[] }> {
+  const inlined: string[] = []
+  const failed: string[] = []
+  const re = /<script\b([^>]*)\bsrc=["']?([^"'\s>]+)[^>]*>\s*<\/script>/gi
+  const tags = [...html.matchAll(re)]
+  if (!tags.length) return { html, inlined, failed }
+  const code = new Map<string, string | null>()
+  await Promise.all(
+    [...new Set(tags.map((t) => t[2]))].map(async (src) => {
+      try {
+        const url = src.startsWith('//') ? 'https:' + src : src
+        if (!/^https:\/\//i.test(url)) throw new Error('not https')
+        const res = await fetch(url, { signal: AbortSignal.timeout(20_000) })
+        if (!res.ok) throw new Error(String(res.status))
+        const text = await res.text()
+        if (!text.trim() || /^\s*</.test(text) || text.length > 600_000) throw new Error('unusable')
+        if (/\b(fetch\s*\(|XMLHttpRequest|WebSocket\s*\(|navigator\.sendBeacon)/.test(text)) throw new Error('uses network calls')
+        code.set(src, text.replace(/<\/script/gi, '<\\/script'))
+      } catch {
+        code.set(src, null)
+      }
+    }),
+  )
+  const out = html.replace(re, (m, attrs, src) => {
+    const text = code.get(src)
+    if (!text) {
+      failed.push(src)
+      return m
+    }
+    inlined.push(src)
+    const type = /type=["']([^"']+)["']/i.exec(attrs)?.[1]
+    return `<script${type ? ` type="${type}"` : ''}>/* inlined from ${src.replace(/\*\//g, '')} */\n${text}\n</script>`
+  })
+  return { html: out, inlined, failed }
+}
+
 /** Deterministic fixes for hexpo's rules: external scripts/links removed, viewport/title added. */
 export function sanitizeForHexpo(html: string, title: string): { html: string; removed: string[] } {
   const removed: string[] = []
@@ -217,6 +257,7 @@ export interface PublishOutcome {
   commit: string
   url: string
   updated: boolean
+  warnings: string[]
 }
 
 export async function publishCourse(
@@ -227,6 +268,7 @@ export async function publishCourse(
   // Manual publish needs no AI review: use the review's metadata when it is current, else derive it.
   const reviewed = course.review && course.review.htmlLength === course.html.length ? course.review : undefined
 
+  const warnings: string[] = []
   for (let attempt = 1; attempt <= 3; attempt++) {
     onStatus(attempt === 1 ? 'Reading hexpo registry…' : `Registry moved — retrying (${attempt}/3)…`)
     const { tax, reg } = await loadHexpo(cfg)
@@ -253,8 +295,13 @@ export async function publishCourse(
     if (!tax.formats.some((f) => f.id === review.meta.format))
       throw new Error(`Format "${review.meta.format}" is not in hexpo's taxonomy — re-run review.`)
 
-    const clean = sanitizeForHexpo(course.html, course.title)
-    if (clean.removed.length) onStatus(`Removed ${clean.removed.length} external resource(s) hexpo forbids: ${clean.removed.join(', ').slice(0, 160)}`)
+    onStatus('Checking for external scripts…')
+    const inl = await inlineExternalScripts(course.html)
+    const clean = sanitizeForHexpo(inl.html, course.title)
+    warnings.length = 0
+    if (inl.inlined.length) warnings.push(`"${course.title}": inlined ${inl.inlined.length} external script(s) so it keeps working`)
+    if (clean.removed.length)
+      warnings.push(`"${course.title}": could not inline, so REMOVED: ${clean.removed.join(', ').slice(0, 200)} — check this page`)
     const html = prefixStorage(clean.html, id)
     const problems = validateForHexpo(html, id)
     if (problems.length)
@@ -335,6 +382,7 @@ export async function publishCourse(
       commit: commit.sha,
       url: `https://github.com/${cfg.repo}/commit/${commit.sha}`,
       updated,
+      warnings,
     }
   }
   throw new Error('Could not publish — the branch kept moving. Try again.')

@@ -25,7 +25,7 @@ const OUTPUT_CONTRACT = `OUTPUT CONTRACT — follow exactly:
 1. Output ONE complete, self-contained HTML document. First characters: <!DOCTYPE html> — last characters: </html>. No markdown code fences. No commentary before or after.
 2. Immediately before the closing </body> tag, place exactly one metadata comment in this exact shape:
 <!--COURSE_META:{"title":"course title","summary":"2-3 sentences describing precisely what this course teaches","topicsCovered":["topic","topic","topic"]}-->
-3. ALL CSS lives in a single <style> block in <head>. ALL JS lives in a single <script> block before </body>. No external scripts or stylesheets except Google Fonts. Never hotlink images — use inline SVG, CSS art, gradients, or canvas for all visuals.
+3. ALL CSS lives in a single <style> block in <head>. ALL JS lives in a single <script> block before </body>. No external scripts or stylesheets except Google Fonts. NEVER add a <script src=...> for any library or CDN (no Chart.js, D3, Three.js, GSAP, jQuery, p5, anime.js, etc.): write every chart, animation and interaction yourself in plain JS with canvas or SVG. Never hotlink images — use inline SVG, CSS art, gradients, or canvas for all visuals.
 4. The page must never make network requests: no fetch, XMLHttpRequest, WebSocket or sendBeacon anywhere in the JS, and never write those words in prose either.`
 
 const ACCURACY_SPEC = `ACCURACY & DEPTH STANDARD — this outranks everything else:
@@ -109,7 +109,7 @@ HOW YOUR WORK IS APPLIED:
 
 HARD CONSTRAINTS:
 1. Never hide, remove or shrink content: no display:none / visibility:hidden / opacity:0 on content except for the page's own toggled states.
-2. Fonts: exactly two Google Fonts, loaded with <link> tags in the FONTS block (fonts.googleapis.com / fonts.gstatic.com only). No other external resources, no images by URL, no @import of other hosts.
+2. Fonts: exactly two Google Fonts, loaded with <link> tags in the FONTS block (fonts.googleapis.com / fonts.gstatic.com only). No other external resources: never a <script src> or CDN library of any kind, no images by URL, no @import of other hosts.
 3. No network calls (no fetch, XMLHttpRequest, WebSocket, sendBeacon) anywhere, including comments.
 4. Motion: include html.no-motion * { animation: none !important; transition: none !important; }. Every requestAnimationFrame/setInterval loop you write must check document.documentElement.classList.contains('no-motion') and draw a static frame when true, and a MutationObserver must resume it when the class is removed. Respect prefers-reduced-motion.
 5. THE FOUNDRY INJECTS THESE AUTOMATICALLY — DO NOT BUILD THEM: the animated black background field, the cinematic title opening, scroll-reveal fades, the Motion switch.
