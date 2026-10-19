@@ -32,7 +32,7 @@ import {
   parseCurriculum,
 } from '@/lib/prompts'
 import { db, uid } from '@/lib/db'
-import { DEFAULT_PUBLISH, loadHexpo, publishCourse } from '@/lib/hexpo'
+import { DEFAULT_PUBLISH, loadHexpo, publishCourse, sanitizeForHexpo } from '@/lib/hexpo'
 import { resolveReviewers, reviewWithFallback } from '@/lib/review'
 import { closeTruncated, isBroken, repairTruncated } from '@/lib/repair'
 import type {
@@ -535,6 +535,14 @@ export default function Home() {
         parsed.html = r.html
         if (r.closed)
           toast.warning('The document was cut off and could not be fully finished — the end was closed automatically. Check the last sections.')
+      }
+
+      {
+        const san = sanitizeForHexpo(parsed.html, parsed.title ?? t)
+        if (san.removed.length) {
+          parsed.html = san.html
+          toast.warning(`Removed ${san.removed.length} external resource(s) hexpo forbids`, { description: san.removed.join(', ').slice(0, 160) })
+        }
       }
 
       // ── quality gate: test the page in a hidden browser, repair what is broken ──
