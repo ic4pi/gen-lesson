@@ -18,7 +18,8 @@ export const PROVIDERS: Record<
   },
   nvidia: {
     label: 'NVIDIA',
-    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    // NVIDIA sends no CORS headers, so browsers go through our same-origin rewrite (vercel.json / vite proxy)
+    baseUrl: '/nvidia/v1',
     keyUrl: 'https://build.nvidia.com',
     hint: 'Free-tier hosted models. Occasionally flaky — test first.',
   },
