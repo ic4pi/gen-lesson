@@ -34,6 +34,7 @@ import {
 import { db, uid } from '@/lib/db'
 import { DEFAULT_PUBLISH, loadHexpo, publishCourse } from '@/lib/hexpo'
 import { resolveReviewers, reviewWithFallback } from '@/lib/review'
+import { closeTruncated, isBroken, repairTruncated } from '@/lib/repair'
 import type {
   Course,
   GenState,
@@ -521,8 +522,20 @@ export default function Home() {
       const parsed = parseCourseHtml(acc)
       if (!parsed.html || parsed.html.length < 800)
         throw new Error('The model did not return a usable HTML document. Retry — flagship models handle this best.')
-      if (looksTruncated(parsed.html))
-        toast.warning('The document looks cut off mid-stream — regenerate with a higher-context model if sections are missing.')
+      if (isBroken(parsed.html)) {
+        // cut off mid-stream: have the same model finish it, else close it mechanically
+        const r = await repairTruncated({
+          html: parsed.html,
+          provider: model.provider,
+          apiKey,
+          model: model.id,
+          signal: abort.signal,
+          onStatus: (m) => setGen((g) => ({ ...g, phase: 'assembling', message: m })),
+        })
+        parsed.html = r.html
+        if (r.closed)
+          toast.warning('The document was cut off and could not be fully finished — the end was closed automatically. Check the last sections.')
+      }
 
       // ── quality gate: test the page in a hidden browser, repair what is broken ──
       let rawFinal = parsed.html
@@ -1044,8 +1057,26 @@ export default function Home() {
     toast.success('Restyled', { description: `Designed by ${fin.designedBy}` })
   }
 
+  /** Courses saved from a cut-off generation: finish them with the writer (else close them) before publishing. */
+  async function repairIfBroken(c: Course): Promise<Course> {
+    if (!isBroken(c.html)) return c
+    const writer = models.find((m) => m.id === c.modelId && m.provider === c.provider)
+    const key = keys[c.provider].trim()
+    const base = stripFx(c.html)
+    const r =
+      writer && key
+        ? await repairTruncated({ html: base, provider: c.provider, apiKey: key, model: c.modelId, onStatus: (m) => toast.message(m) })
+        : { html: closeTruncated(base), continued: false, closed: true }
+    const html = fxRef.current ? enhanceCourseHtml(r.html, fxMeta(c)) : r.html
+    const fixed: Course = { ...c, html, rawHtml: c.rawHtml && isBroken(c.rawHtml) ? r.html : c.rawHtml, review: undefined }
+    await saveCourse(fixed)
+    toast.message(r.closed ? 'Course was cut off; closed it automatically' : 'Course was cut off; the model finished it')
+    return fixed
+  }
+
   async function publishCurrent(target: Course | null = current) {
     if (!target) return
+    target = await repairIfBroken(target)
     const out = await publishCourse(publish, target, (s) => toast.message(s))
     await saveCourse({
       ...target,
