@@ -98,6 +98,9 @@ const sleep = (ms: number, signal: () => boolean) =>
 
 const IDLE: GenState = { phase: 'idle', message: '', chars: 0, planPreview: null }
 
+/** HTTP statuses where retrying cannot help (bad key, no credits, model missing). */
+const FATAL_STATUS = [401, 402, 403]
+
 export default function Home() {
   // ── persisted prefs ──────────────────────────────────────
   const [keys, setKeysState] = useState<Keys>(() => {
@@ -155,6 +158,7 @@ export default function Home() {
   const queueStopRef = useRef(false)
   const queueRef = useRef<QueueItem[]>(queue)
   const lastErrorRef = useRef('')
+  const lastStatusRef = useRef(0)
   const [designerId, setDesignerId] = useState(
     () => localStorage.getItem(LS_DESIGNER) ?? 'openrouter:anthropic/claude-opus-4.1',
   )
@@ -171,6 +175,14 @@ export default function Home() {
   useEffect(() => localStorage.setItem(LS_BUILDMODE, buildMode), [buildMode])
   useEffect(() => localStorage.setItem(LS_REF, refId), [refId])
   useEffect(() => localStorage.setItem(LS_FX, fxOn ? 'on' : 'off'), [fxOn])
+  // Library "View": show that course even while a build is running, and bring the preview into sight
+  const [viewPinned, setViewPinned] = useState(false)
+  const outputRef = useRef<HTMLDivElement>(null)
+  function previewCourse(c: Course) {
+    setCurrent(c)
+    setViewPinned(true)
+    setTimeout(() => outputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
   const sizeMemo = useRef<Record<string, number>>({})
   const plannedSeriesId = useRef<string | null>(null)
   const buildModeRef = useRef(buildMode)
@@ -628,6 +640,7 @@ export default function Home() {
         toast('Generation cancelled')
       } else {
         lastErrorRef.current = e?.message ?? 'Generation failed'
+        lastStatusRef.current = e?.status ?? 0
         setGen({ phase: 'error', message: e?.message ?? 'Generation failed', chars: 0, planPreview: null })
         toast.error(e?.message ?? 'Generation failed')
       }
@@ -766,11 +779,14 @@ export default function Home() {
       const planned = ov.mode === 'new' && attempt > 1 && plannedSeriesId.current
         ? seriesRef.current.find((x) => x.id === plannedSeriesId.current)
         : undefined
+      lastStatusRef.current = 0
       const r = await generate(
         planned ? { topic: planned.topic, notes: planned.notes, series: planned, previous: [], itemId: ov.itemId } : ov,
       )
       if (r) return r
       if (queueStopRef.current) return null
+      // key/credit/model errors never fix themselves: retrying only burns money
+      if (FATAL_STATUS.includes(lastStatusRef.current)) return null
       if (attempt < 3) {
         if (ov.itemId)
           patchItem(ov.itemId, {
@@ -786,12 +802,10 @@ export default function Home() {
 
   /** Queue hook: review (and rebuild if needed) then push to hexpo. Never fails the build itself. */
   async function autoPublish(c: Course, item?: QueueItem) {
-    if (publish.autoPublish === false || !publish.token.trim() || !hasReviewerKey(keys)) return
+    if (publish.autoPublish === false || !publish.token.trim()) return
     try {
-      if (item) patchItem(item.id, { progress: `Reviewing & publishing "${c.title}"…` })
-      const fresh = coursesRef.current.find((x) => x.id === c.id) ?? c
-      const ok = await reviewAndPublish(fresh)
-      if (!ok) toast.warning(`"${c.title}" didn't pass review — kept in your Library, not published`)
+      if (item) patchItem(item.id, { progress: `Publishing "${c.title}"…` })
+      await publishCurrent(coursesRef.current.find((x) => x.id === c.id) ?? c) // no model calls
     } catch (e: any) {
       toast.error(`Publish failed for "${c.title}": ${e?.message ?? 'error'}`, { duration: 9000 })
     }
@@ -876,6 +890,7 @@ export default function Home() {
     }
     let built = 0
     let failed = 0
+    let streak = 0
     try {
       for (;;) {
         // a 'running' leftover (page reload mid-build) is resumed like a pending one
@@ -894,9 +909,18 @@ export default function Home() {
         }
         if (ok) {
           built++
+          streak = 0
           patchItem(item.id, { status: 'done', progress: undefined })
         } else {
           failed++
+          streak++
+          if (FATAL_STATUS.includes(lastStatusRef.current) || streak >= 3) {
+            patchItem(item.id, { status: 'failed', progress: undefined, error: lastErrorRef.current || 'Failed' })
+            toast.error(`Queue stopped after ${streak} failure(s) in a row — ${String(lastErrorRef.current).slice(0, 160)}`, { duration: 15000 })
+            queueStopRef.current = true
+            localStorage.removeItem(LS_AUTORUN)
+            break
+          }
           patchItem(item.id, { status: 'failed', progress: undefined, error: lastErrorRef.current || 'Failed' })
         }
       }
@@ -1258,14 +1282,14 @@ export default function Home() {
               designerId={designerId}
               setDesignerId={setDesignerId}
               onAddCustom={addCustomModel}
-              onGenerate={() => generate()}
+              onGenerate={() => { setViewPinned(false); void generate() }}
               onCancel={stopQueue}
               gen={gen}
             />
           </div>
-          <div className="rise rise-1">
+          <div className="rise rise-1" ref={outputRef} style={{ scrollMarginTop: 12 }}>
             <OutputPane
-              gen={gen}
+              gen={viewPinned && current ? IDLE : gen}
               course={current}
               reviewerLabel={reviewer ? reviewer.label : null}
               hexpoRepo={publish.repo}
@@ -1308,7 +1332,7 @@ export default function Home() {
         <Library
           courses={courses}
           seriesList={seriesList}
-          onPreview={setCurrent}
+          onPreview={previewCourse}
           onPublish={publishFromLibrary}
           onPublishAll={publishAllUnpublished}
           onBuildRemaining={buildRemaining}
