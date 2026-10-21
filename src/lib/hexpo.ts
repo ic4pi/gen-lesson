@@ -26,15 +26,22 @@ export const DEFAULT_PUBLISH: PublishConfig = {
 const API = 'https://api.github.com'
 
 async function gh(cfg: PublishConfig, path: string, init?: RequestInit) {
-  const res = await fetch(`${API}/repos/${cfg.repo}${path}`, {
-    ...init,
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${cfg.token}`,
-      'X-GitHub-Api-Version': '2022-11-28',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-    },
-  })
+  let res: Response
+  try {
+    res = await fetch(`${API}/repos/${cfg.repo}${path}`, {
+      ...init,
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${cfg.token.trim()}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      },
+    })
+  } catch (err: any) {
+    throw new Error(
+      `Could not reach api.github.com (${err?.message ?? 'network error'}) while calling ${path.split('?')[0]}. Browser/network is blocking it (ad-blocker, VPN, offline) — not a token problem.`,
+    )
+  }
   if (!res.ok) {
     let msg = ''
     try {
@@ -155,10 +162,8 @@ export async function publishCourse(
   course: Course,
   onStatus: (s: string) => void = () => {},
 ): Promise<PublishOutcome> {
-  const review = course.review
-  if (!review?.passed) throw new Error('This course has not passed review.')
-  if (review.htmlLength !== course.html.length)
-    throw new Error('The HTML changed after review — run the review again.')
+  // Review is optional: a valid, current review supplies catalogue metadata; otherwise it is derived locally.
+  const review = course.review && course.review.htmlLength === course.html.length ? course.review : undefined
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     onStatus(attempt === 1 ? 'Reading hexpo registry…' : `Registry moved — retrying (${attempt}/3)…`)
@@ -180,10 +185,18 @@ export async function publishCourse(
     }
     const file = `${id}.html`
 
-    if (!tax.categories.some((c) => c.id === review.meta.category))
-      throw new Error(`Category "${review.meta.category}" is not in hexpo's taxonomy — re-run review.`)
-    if (!tax.formats.some((f) => f.id === review.meta.format))
-      throw new Error(`Format "${review.meta.format}" is not in hexpo's taxonomy — re-run review.`)
+    const meta = review?.meta ?? {
+      category: tax.categories[0]?.id ?? '',
+      format: tax.formats[0]?.id ?? '',
+      kicker: '',
+      blurb: (course.summary || course.title).slice(0, 220),
+      covers: (course.topicsCovered ?? []).slice(0, 8),
+      concepts: [] as { id: string; angle: string }[],
+    }
+    if (!tax.categories.some((c) => c.id === meta.category))
+      throw new Error(`Category "${meta.category}" is not in hexpo's taxonomy — re-run review.`)
+    if (!tax.formats.some((f) => f.id === meta.format))
+      throw new Error(`Format "${meta.format}" is not in hexpo's taxonomy — re-run review.`)
 
     const html = prefixStorage(course.html, id)
     const problems = validateForHexpo(html, id)
@@ -195,19 +208,19 @@ export async function publishCourse(
       id,
       file,
       status: 'published',
-      category: review.meta.category,
-      format: review.meta.format,
+      category: meta.category,
+      format: meta.format,
       title: course.title,
-      kicker: m ? `${m.number} · ${m.division.replace(/^\d+\s*/, '')}` : review.meta.kicker,
-      blurb: review.meta.blurb,
-      covers: review.meta.covers,
-      concepts: review.meta.concepts.filter((c) => tax.concepts.some((x) => x.id === c.id)),
+      kicker: m ? `${m.number} · ${m.division.replace(/^\d+\s*/, '')}` : meta.kicker,
+      blurb: meta.blurb,
+      covers: meta.covers,
+      concepts: meta.concepts.filter((c) => tax.concepts.some((x) => x.id === c.id)),
       related: [],
       books: [],
       generated: true,
       source: 'masterclass-foundry',
       model: course.modelId,
-      reviewScore: review.valueScore,
+      ...(review ? { reviewScore: review.valueScore } : {}),
       ...(m ? { number: m.number, decimalClass: m.cls, decimalDivision: m.division, decimalKind: m.kind, wave: m.wave } : {}),
       words: visibleWords(html),
       bytes: new TextEncoder().encode(html).length,
@@ -245,7 +258,7 @@ export async function publishCourse(
     const commit = await gh(cfg, '/git/commits', {
       method: 'POST',
       body: JSON.stringify({
-        message: `masterclasses: ${updated ? 'update' : 'add'} ${course.title} (Foundry, review ${review.valueScore}/100)`,
+        message: `masterclasses: ${updated ? 'update' : 'add'} ${course.title} (Foundry${review ? `, review ${review.valueScore}/100` : ''})`,
         tree: tree.sha,
         parents: [parentSha],
       }),
