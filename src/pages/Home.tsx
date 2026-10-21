@@ -177,6 +177,14 @@ export default function Home() {
   useEffect(() => localStorage.setItem(LS_BUILDMODE, buildMode), [buildMode])
   useEffect(() => localStorage.setItem(LS_REF, refId), [refId])
   useEffect(() => localStorage.setItem(LS_FX, fxOn ? 'on' : 'off'), [fxOn])
+  // Library "View": show that course even while a build is running, and bring the preview into sight
+  const [viewPinned, setViewPinned] = useState(false)
+  const outputRef = useRef<HTMLDivElement>(null)
+  function previewCourse(c: Course) {
+    setCurrent(c)
+    setViewPinned(true)
+    setTimeout(() => outputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
   const sizeMemo = useRef<Record<string, number>>({})
   // survive a failed attempt: the brief and any half-written page are kept so a retry continues instead of restarting
   const briefCache = useRef<Record<string, { text: string; visual: VisualDirection | null }>>({})
@@ -1291,14 +1299,14 @@ export default function Home() {
               designerId={designerId}
               setDesignerId={setDesignerId}
               onAddCustom={addCustomModel}
-              onGenerate={() => generate()}
+              onGenerate={() => { setViewPinned(false); void generate() }}
               onCancel={stopQueue}
               gen={gen}
             />
           </div>
-          <div className="rise rise-1">
+          <div className="rise rise-1" ref={outputRef} style={{ scrollMarginTop: 12 }}>
             <OutputPane
-              gen={gen}
+              gen={viewPinned && current ? IDLE : gen}
               course={current}
               reviewerLabel={reviewer ? reviewer.label : null}
               hexpoRepo={publish.repo}
@@ -1341,7 +1349,7 @@ export default function Home() {
         <Library
           courses={courses}
           seriesList={seriesList}
-          onPreview={setCurrent}
+          onPreview={previewCourse}
           onPublish={publishFromLibrary}
           onPublishAll={publishAllUnpublished}
           onBuildRemaining={buildRemaining}
