@@ -1112,15 +1112,6 @@ export default function Home() {
     })
   }
 
-  /** Library one-click: review → rebuild until it passes → push to hexpo. Returns true if published. */
-  async function reviewAndPublish(c: Course): Promise<boolean> {
-    let cur: Course | null = c
-    if (!(cur.review?.passed && cur.review.htmlLength === cur.html.length)) cur = await autoImprove(c)
-    if (!cur?.review?.passed) return false
-    await publishCurrent(cur)
-    return true
-  }
-
   async function publishFromLibrary(c: Course) {
     try {
       await publishCurrent(c) // manual publish: never calls a reviewer
