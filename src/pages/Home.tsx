@@ -98,6 +98,9 @@ const sleep = (ms: number, signal: () => boolean) =>
 const IDLE: GenState = { phase: 'idle', message: '', chars: 0, planPreview: null }
 
 /** HTTP statuses where retrying cannot help (bad key, no credits, model missing). */
+const CONTINUE_PROMPT =
+  'Your output stopped before the document was finished. Continue EXACTLY where you left off — output only the remaining text, starting mid-stream, with no preamble, no repetition of earlier content, and no markdown fences. Finish every open section, script and tag through </html>.'
+
 const FATAL_STATUS = [401, 402, 403, 404]
 
 export default function Home() {
@@ -175,6 +178,9 @@ export default function Home() {
   useEffect(() => localStorage.setItem(LS_REF, refId), [refId])
   useEffect(() => localStorage.setItem(LS_FX, fxOn ? 'on' : 'off'), [fxOn])
   const sizeMemo = useRef<Record<string, number>>({})
+  // survive a failed attempt: the brief and any half-written page are kept so a retry continues instead of restarting
+  const briefCache = useRef<Record<string, { text: string; visual: VisualDirection | null }>>({})
+  const partialCache = useRef<Record<string, string>>({})
   const plannedSeriesId = useRef<string | null>(null)
   const buildModeRef = useRef(buildMode)
   buildModeRef.current = buildMode
@@ -423,10 +429,17 @@ export default function Home() {
       const tag = series && part ? `Part ${part}/${series.plan.length}` : 'Building'
       prog(`${tag} · creative brief`)
       // ── creative brief: the model writes its own build requirements + art direction ──
+      const buildKey = `${series?.id ?? ''}|${part}|${effTopic}`
       let visual: VisualDirection | null = series?.design ?? null
       let briefText = ''
+      const cachedBrief = briefCache.current[buildKey]
+      if (cachedBrief) {
+        briefText = cachedBrief.text
+        visual = visual ?? cachedBrief.visual
+      }
       setGen((g) => ({ ...g, phase: 'planning', message: 'Writing the creative brief…' }))
       try {
+        if (cachedBrief) throw Object.assign(new Error('cached'), { cached: true })
         const b = await makeBrief({
           model,
           apiKey,
@@ -450,9 +463,14 @@ export default function Home() {
             }
           }
         }
+        briefCache.current[buildKey] = { text: briefText, visual }
       } catch (e: any) {
+        if (e?.cached) {
+          /* reusing the brief from the failed attempt */
+        } else {
         if (e?.name === 'AbortError') throw e
         toast.warning(`Creative brief failed (${e?.message ?? 'error'}) — building without it`)
+        }
       }
       setGen((g) => ({ ...g, phase: 'writing', message: '' }))
 
@@ -483,13 +501,21 @@ export default function Home() {
       let lastErr: any = null
       for (let ai = Math.min(sizeMemo.current[`${model.provider}:${model.id}`] ?? 0, attempts.length - 1); ai < attempts.length; ai++) {
         const at = attempts[ai]
-        acc = ''
+        const resumed = partialCache.current[buildKey] ?? ''
+        acc = resumed
+        if (resumed) toast.message(`Continuing the unfinished page (${(resumed.length / 1000).toFixed(0)}k chars kept)`)
         try {
           for await (const delta of streamChat({
             provider: model.provider,
             apiKey,
             model: model.id,
-            messages: [{ role: 'user', content: buildPrompt(at.ref) }],
+            messages: resumed
+              ? [
+                  { role: 'user', content: buildPrompt(at.ref) },
+                  { role: 'assistant', content: resumed },
+                  { role: 'user', content: CONTINUE_PROMPT },
+                ]
+              : [{ role: 'user', content: buildPrompt(at.ref) }],
             maxTokens: at.max,
             temperature: 0.7,
             signal: abort.signal,
@@ -502,10 +528,12 @@ export default function Home() {
             }
           }
           lastErr = null
+          delete partialCache.current[buildKey]
           sizeMemo.current[`${model.provider}:${model.id}`] = ai
           break
         } catch (e: any) {
           lastErr = e
+          if (acc.length > 3000) partialCache.current[buildKey] = acc // keep what was written; the retry continues from here
           if (e?.name === 'AbortError') throw e
           // 400/413/422: the request itself was refused (too long, output limit too high): retry smaller
           if ([400, 413, 422].includes(e?.status) && ai < attempts.length - 1) {
@@ -519,6 +547,30 @@ export default function Home() {
         }
       }
       if (lastErr) throw lastErr
+
+      // cut off mid-document: ask the same model to finish it (up to twice) instead of rebuilding
+      for (let c = 0; c < 2 && acc.length > 3000 && looksTruncated(parseCourseHtml(acc).html ?? acc); c++) {
+        toast.message('Page was cut off — asking the model to finish it')
+        let more = ''
+        for await (const delta of streamChat({
+          provider: model.provider,
+          apiKey,
+          model: model.id,
+          messages: [
+            { role: 'user', content: buildPrompt(false) },
+            { role: 'assistant', content: acc },
+            { role: 'user', content: CONTINUE_PROMPT },
+          ],
+          maxTokens: Math.min(16000, cap),
+          temperature: 0.5,
+          signal: abort.signal,
+        })) {
+          more += delta
+          setGen((g) => ({ ...g, chars: acc.length + more.length }))
+        }
+        if (!more.trim()) break
+        acc += more
+      }
 
       // ── assemble ──
       setGen((g) => ({ ...g, phase: 'assembling', message: 'Extracting the document…' }))
