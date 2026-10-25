@@ -79,7 +79,9 @@ const SINGLE_SPEC = `YOU ARE AUTHOR, ENGINEER AND ART DIRECTOR IN ONE. The page 
 ART DIRECTION:
 - Invent a palette native to the subject: a near-black "void" base tinted toward the subject, 3–4 vivid accent colours, and glow shadows, all as CSS custom properties on :root (e.g. --void, --deep, --accent-a, --accent-b, --accent-c, --glow-a, --glow-b, --text, --muted). Use gradient text and layered glows on key headings and numerals. The page is always dark: never a white or pale page.
 - Typography: exactly two Google Fonts (a distinctive display face and a readable body face) chosen for the subject, optionally a monospace for labels. Real hierarchy: tiny letter-spaced section labels ("03 — Interactive Visualizer"), huge glowing display titles, generous whitespace, body 17px+, reading width about 70ch.
-- A full-page ambient canvas background and a soft cursor glow specific to the subject (never generic).
+- A full-page ambient canvas background and a soft cursor glow specific to the subject (never generic), kept subtle and switchable off.
+- Reactive text and elements: headings, terms and cards that respond to the pointer, focus and scroll (letter or word shifts, glows that follow the cursor, tilt, reveal), all disabled by the Motion switch.
+- A visual identity unique to THIS subject: its own palette, fonts, composition and ornament, clearly different from other courses in the library.
 - Components should feel hand-made: glass-and-hairline cards, glowing hover states, animated meters and progress bars, drawers and tabs with polished transitions.
 
 THE SIGNATURE INSTRUMENT (the most important part):
@@ -93,7 +95,7 @@ STUDY LAYER:
 
 const refBlock = (reference?: string | null) =>
   reference
-    ? `REFERENCE PAGE — MATCH ITS LEVEL OF CRAFT. Below is the CSS and JavaScript of a finished page the creator loves, with its prose shortened. Study how it builds its palette tokens, glows, ambient canvas, custom instruments, tabs, quiz, saved exercises and animation. Reach that same level of visual richness and interactivity for the NEW topic. Do NOT copy its topic, wording, colours, layout or code; invent a fresh palette, fresh instruments and fresh structure that suit the new subject.\n\n<reference>\n${reference}\n</reference>`
+    ? `REFERENCE PAGE — A BAR FOR FEATURES AND ENGINEERING, NOT A LOOK TO COPY. Below is the CSS and JavaScript of a finished page, with its prose shortened. Match its depth of FUNCTION: custom topic-native instruments with real logic, reactive text and elements that respond to the pointer and scroll, subtle ambient motion that can be switched off, tabs, quiz, saved exercises, polished state transitions. Its VISUAL IDENTITY must NOT carry over: the new page must look unmistakably different. Derive a new palette, typography, layout, motif, hero and component styling from the NEW subject's own symbolism and history (a different colour world, different fonts, different composition, different ornament). If the new page could be mistaken for the reference at a glance, you have failed. Do NOT reuse its topic, wording, colours, fonts, layout or code.\n\n<reference>\n${reference}\n</reference>`
     : ''
 
 export function designPrompt(opts: { skeleton: string; title: string; rejected?: string; visual?: VisualDirection | null }): string {

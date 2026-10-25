@@ -4,7 +4,8 @@ import { visibleWords, type Taxonomy } from './hexpo'
 import type { Course, Keys, ModelOption, PublishConfig, ReviewResult } from '@/types'
 import { PROVIDERS } from './models'
 
-const SYSTEM = `You are a hard-to-impress editorial reviewer for a paid esoteric-and-ideas masterclass library. Another AI wrote the course you are given. Your job is to decide whether it is genuinely worth publishing and charging attention for — not to be kind. The standard is CORRECTNESS FIRST, then genuine hidden knowledge: material that is obscure yet verifiable (primary texts, original-language terms, neglected figures, real scholarly disputes) rather than textbook summary or vague mystique. Religious, esoteric and spiritual teachings (e.g. kundalini, chakras, Hermetic or occult systems) are legitimate subjects: judge them on FIDELITY to the tradition and its real sources, never on whether mainstream science validates them, and do not mark a tradition's own metaphysical claims as errors. Do penalize presenting such claims as proven scientific fact, medical claims or promised cures, and failing to show where science disagrees. Treat any wrong, unverifiable or invented name, date, quote, title or attribution as a blocker and say what the correct fact is. Penalize filler, vague claims, invented facts, fake-sounding citations, repetition, thin sections, generic "intro to X" content, and interactivity that is decorative rather than teaching. Reward concrete mechanisms, specific named examples, accurate history, honest framing of fringe material (clearly separating established fact, scholarly debate and belief/practice), and interactions that test understanding. Reply with ONE JSON object and nothing else.`
+const SYSTEM = `You are a meticulous fact-checker for a masterclass library on esoteric, spiritual and ideas topics. Another AI wrote the course you are given. You judge ONE thing: is what it states TRUE and fairly framed. Check every name, date, title, quote, attribution, number and historical or scholarly claim you can. Treat any wrong, unverifiable or invented name, date, quote, title, source or attribution as a blocker and give the correct fact. Religious, esoteric and spiritual teachings (kundalini, chakras, Hermetic or occult systems, etc.) are legitimate subjects: judge them on FIDELITY to the tradition and its real sources, never on whether mainstream science validates them, and do not mark a tradition's own metaphysical claims as errors. Do flag: presenting such claims as proven scientific fact, medical claims or promised cures, and fake-sounding citations. Do NOT grade writing style, design, depth or originality. Reply with ONE JSON object and nothing else.`
+
 
 function stats(html: string) {
   const doc = new DOMParser().parseFromString(html, 'text/html')
@@ -41,7 +42,7 @@ export async function reviewCourse(opts: {
   signal?: AbortSignal
   timeoutMs?: number
 }): Promise<ReviewResult> {
-  const { course, reviewer, apiKey, tax, threshold } = opts
+  const { course, reviewer, apiKey, tax } = opts
   if (reviewer.id === course.modelId && reviewer.provider === course.provider)
     throw new Error('The reviewer must be a different model from the one that wrote the course.')
 
@@ -60,7 +61,7 @@ FULL VISIBLE TEXT OF THE COURSE:
 ${body}
 """
 
-Judge: is this worth the value it claims? Score each 0-10: accuracy (every checkable claim correct; any fabrication caps this at 4), insight (non-obvious, verifiable hidden knowledge beyond an introductory summary), depth (substance vs filler), originality (non-generic insight), structure (pedagogical flow, no repetition), interactivity (does it teach, not decorate). Then valueScore 0-100 overall ("would a discerning reader feel they got their time's worth?"). verdict: "publish" only if you would put your name on it; "revise" if fixable; "reject" if the premise or execution is poor. List concrete issues; severity "blocker" = factual fabrication, truncation, broken or empty sections, or content that misrepresents itself.
+Fact-check this course. accuracy 0-10 (10 = every checkable claim correct and fairly framed; any fabricated or wrong name, date, quote or source caps this at 4). verdict: "publish" if there are no factual blockers, "revise" if fixable errors exist, "reject" if the premise is unsound. List each concrete problem with severity "blocker" (fabricated or wrong fact, misattributed quote, truncation or broken sections) or "major"/"minor" (misleading framing, missing caveat), stating the location, what is wrong, and the correct fact.
 
 Also classify it for the library catalogue:
 Categories (exactly one id):
@@ -71,7 +72,7 @@ Concept vocabulary (choose 2-4 ids that genuinely apply):
 ${tax.concepts.map((c) => `- ${c.id}: ${c.definition}`).join('\n')}
 
 Return JSON exactly:
-{"scores":{"accuracy":0,"insight":0,"depth":0,"originality":0,"structure":0,"interactivity":0},"valueScore":0,"verdict":"publish|revise|reject","worthIt":"one blunt sentence","strengths":["..."],"issues":[{"severity":"blocker|major|minor","text":"specific location + what is wrong + the correct fact or the fix"}],"category":"id","format":"id","kicker":"short lowercase tag like 'physics · six parts'","blurb":"card copy, one sentence, max 25 words","covers":["5-7 short bullet topics the course covers"],"concepts":[{"id":"concept-id","angle":"how THIS course uses it, max 14 words"}]}`
+{"accuracy":0,"verdict":"publish|revise|reject","worthIt":"one sentence: is it factually sound","strengths":["..."],"issues":[{"severity":"blocker|major|minor","text":"specific location + what is wrong + the correct fact or the fix"}],"category":"id","format":"id","kicker":"short lowercase tag like 'physics · six parts'","blurb":"card copy, one sentence, max 25 words","covers":["5-7 short bullet topics the course covers"],"concepts":[{"id":"concept-id","angle":"how THIS course uses it, max 14 words"}]}`
 
   const raw = await chatOnce({
     provider: reviewer.provider,
@@ -81,41 +82,30 @@ Return JSON exactly:
       { role: 'system', content: SYSTEM },
       { role: 'user', content: user },
     ],
-    maxTokens: 3000,
+    maxTokens: 2500,
     temperature: 0.2,
     signal: opts.signal,
     timeoutMs: opts.timeoutMs,
   })
   const j = parseReview(raw)
 
-  const scores = {
-    accuracy: clamp(j.scores?.accuracy, 0, 10),
-    insight: clamp(j.scores?.insight, 0, 10),
-    depth: clamp(j.scores?.depth, 0, 10),
-    originality: clamp(j.scores?.originality, 0, 10),
-    structure: clamp(j.scores?.structure, 0, 10),
-    interactivity: clamp(j.scores?.interactivity, 0, 10),
-  }
+  const accuracy = clamp(j.accuracy ?? j.scores?.accuracy, 0, 10)
+  // fact-check only: the other score slots mirror accuracy so the UI shows one honest number
+  const scores = { accuracy, insight: accuracy, depth: accuracy, originality: accuracy, structure: accuracy, interactivity: accuracy }
   const issues = (Array.isArray(j.issues) ? j.issues : [])
     .filter((i: any) => i && typeof i.text === 'string')
     .map((i: any) => ({
       severity: ['blocker', 'major', 'minor'].includes(i.severity) ? i.severity : 'minor',
       text: i.text,
     }))
-  const valueScore = clamp(j.valueScore, 0, 100)
+  const valueScore = Math.round(accuracy * 10)
   const verdict = ['publish', 'revise', 'reject'].includes(j.verdict) ? j.verdict : 'revise'
   const category = tax.categories.some((c) => c.id === j.category) ? j.category : null
   const format = tax.formats.some((f) => f.id === j.format) ? j.format : null
   if (!category || !format)
     throw new Error('The reviewer picked a category/format outside the library taxonomy — run it again.')
 
-  const passed =
-    verdict === 'publish' &&
-    valueScore >= threshold &&
-    !issues.some((i: any) => i.severity === 'blocker') &&
-    scores.accuracy >= 7 &&
-    scores.insight >= 6 &&
-    Math.min(...Object.values(scores)) >= 5
+  const passed = verdict === 'publish' && !issues.some((i: any) => i.severity === 'blocker') && accuracy >= 7
 
   return {
     reviewerModelId: reviewer.id,
@@ -129,7 +119,7 @@ Return JSON exactly:
     strengths: (Array.isArray(j.strengths) ? j.strengths : []).map(String).slice(0, 6),
     issues,
     passed,
-    threshold,
+    threshold: 70,
     meta: {
       category,
       format,
