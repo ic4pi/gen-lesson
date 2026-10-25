@@ -127,6 +127,7 @@ export default function Library(p: Props) {
                               )}
                             </div>
                           </div>
+                          {built && <PublishStatus c={built} />}
                           {built && (
                             <div className="mt-3 flex gap-1.5">
                               <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => p.onPreview(built)}>
@@ -167,6 +168,7 @@ export default function Library(p: Props) {
                   <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
                     {c.summary || c.topic}
                   </p>
+                  <PublishStatus c={c} />
                   <div className="mt-3 flex gap-1.5">
                     <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => p.onPreview(c)}>
                       <Eye className="mr-1 h-3 w-3" /> View
@@ -194,4 +196,12 @@ export default function Library(p: Props) {
       )}
     </section>
   )
+}
+
+/** One line on each card: live in hexpo, failed (with the reason), or not published yet. */
+function PublishStatus({ c }: { c: Course }) {
+  if (c.publishError)
+    return <p className="mt-2 line-clamp-3 text-[11px] leading-snug text-destructive">Not published: {c.publishError}</p>
+  if (c.published) return <p className="mt-2 text-[11px] text-primary">Published to hexpo</p>
+  return <p className="mt-2 text-[11px] text-muted-foreground">Not published yet</p>
 }
