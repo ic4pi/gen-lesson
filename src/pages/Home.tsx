@@ -99,6 +99,9 @@ const sleep = (ms: number, signal: () => boolean) =>
 const IDLE: GenState = { phase: 'idle', message: '', chars: 0, planPreview: null }
 
 /** HTTP statuses where retrying cannot help (bad key, no credits, model missing). */
+/** Browser-test rewrites cost up to 32k output tokens each; the test still runs and reports, it just no longer rewrites. */
+const MAX_QA_REPAIRS = 0
+
 const FATAL_STATUS = [401, 402, 403]
 
 export default function Home() {
@@ -557,12 +560,12 @@ export default function Home() {
         setGen((g) => ({ ...g, phase: 'assembling', message: 'Testing the page in a browser…' }))
         prog(`${tag} · testing the page`)
         qa = await runQA(rawFinal)
-        while (!qa.passed && repairs < 2 && !abort.signal.aborted) {
+        while (!qa.passed && repairs < MAX_QA_REPAIRS && !abort.signal.aborted) {
           repairs++
-          toast.message(`Quality check found ${qa.problems.length} issue(s); repairing (${repairs}/2)`, {
+          toast.message(`Quality check found ${qa.problems.length} issue(s); repairing (${repairs}/${MAX_QA_REPAIRS})`, {
             description: qa.problems.slice(0, 2).join(' · '),
           })
-          prog(`${tag} · repairing (${repairs}/2)`)
+          prog(`${tag} · repairing (${repairs}/${MAX_QA_REPAIRS})`)
           setGen((g) => ({ ...g, phase: 'writing', chars: 0, message: 'Repairing…' }))
           let fixedRaw = ''
           for await (const delta of streamChat({
