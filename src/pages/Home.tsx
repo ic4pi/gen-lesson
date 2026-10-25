@@ -769,7 +769,7 @@ export default function Home() {
       q.map((x) => (x.id === id ? { ...x, mode: x.mode === 'series' ? 'standalone' : 'series' } : x)),
     )
   const rerunItem = (id: string) =>
-    patchItem(id, { status: 'pending', seriesId: undefined, progress: undefined, error: undefined })
+    patchItem(id, { status: 'pending', progress: undefined, error: undefined }) // keep seriesId: resume the same series, don't plan a new one
   const clearDone = () => updateQueue((q) => q.filter((x) => x.status !== 'done'))
 
   /** Run one generation, retrying transient failures (rate limits, network, bad output). */
@@ -802,11 +802,17 @@ export default function Home() {
 
   /** Queue hook: review (and rebuild if needed) then push to hexpo. Never fails the build itself. */
   async function autoPublish(c: Course, item?: QueueItem) {
-    if (publish.autoPublish === false || !publish.token.trim()) return
+    if (publish.autoPublish === false) return
+    if (!publish.token.trim()) {
+      toast.warning('Auto-publish skipped: add your GitHub token in Keys → Publish', { id: 'no-token' })
+      return
+    }
+    const fresh = coursesRef.current.find((x) => x.id === c.id) ?? c
     try {
       if (item) patchItem(item.id, { progress: `Publishing "${c.title}"…` })
-      await publishCurrent(coursesRef.current.find((x) => x.id === c.id) ?? c) // no model calls
+      await publishCurrent(fresh) // no model calls
     } catch (e: any) {
+      await noteFailure(fresh, e)
       toast.error(`Publish failed for "${c.title}": ${e?.message ?? 'error'}`, { duration: 9000 })
     }
   }
@@ -1105,6 +1111,7 @@ export default function Home() {
     await saveCourse({
       ...target,
       published: { id: out.id, file: out.file, at: Date.now(), commit: out.commit },
+      publishError: undefined,
     })
     if (out.warnings.length) toast.warning(out.warnings.join('\n'), { duration: 15000 })
     toast.success(out.updated ? 'Updated in hexpo' : 'Pushed to hexpo', {
@@ -1112,10 +1119,17 @@ export default function Home() {
     })
   }
 
+  /** Remember why a publish failed so the Library card shows it after the toast is gone. */
+  async function noteFailure(c: Course, e: any) {
+    const latest = coursesRef.current.find((x) => x.id === c.id) ?? c
+    await saveCourse({ ...latest, publishError: String(e?.message ?? 'Publish failed').slice(0, 400) })
+  }
+
   async function publishFromLibrary(c: Course) {
     try {
       await publishCurrent(c) // manual publish: never calls a reviewer
     } catch (e: any) {
+      await noteFailure(c, e)
       toast.error(e?.message ?? 'Publish failed', { duration: 9000 })
     }
   }
@@ -1129,6 +1143,7 @@ export default function Home() {
         await publishCurrent(c)
         ok++
       } catch (e: any) {
+        await noteFailure(c, e)
         toast.error(`${c.title}: ${e?.message ?? 'failed'}`, { duration: 9000 })
       }
     }

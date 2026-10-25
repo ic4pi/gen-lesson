@@ -64,6 +64,8 @@ export interface Course {
   visual?: VisualDirection
   designedBy?: string
   published?: { id: string; file: string; at: number; commit: string }
+  /** Why the last publish attempt failed; cleared on success. Shown on the Library card. */
+  publishError?: string
 }
 
 export interface ReviewIssue {
