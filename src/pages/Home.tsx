@@ -1140,17 +1140,24 @@ export default function Home() {
   async function publishAllUnpublished() {
     const todo = coursesRef.current.filter((c) => !c.published)
     if (!todo.length) return toast('Nothing to publish — everything is already in hexpo')
+    const failed: { title: string; why: string }[] = []
     let ok = 0
-    for (const c of todo) {
+    for (const [n, c] of todo.entries()) {
+      toast.message(`Publishing ${n + 1}/${todo.length}: ${c.title}`, { id: 'publish-all' })
       try {
         await publishCurrent(c)
         ok++
       } catch (e: any) {
         await noteFailure(c, e)
-        toast.error(`${c.title}: ${e?.message ?? 'failed'}`, { duration: 9000 })
+        failed.push({ title: c.title, why: String(e?.message ?? 'failed').split('\n').filter(Boolean).slice(0, 2).join(' ') })
+        // a bad token / repo / network problem hits every course the same way: stop instead of repeating it
+        if (/GitHub rejected the token|GitHub 404|Could not reach api\.github\.com/.test(String(e?.message))) break
       }
     }
-    toast.success(`Published ${ok} of ${todo.length}`)
+    toast.dismiss('publish-all')
+    const lines = failed.map((f) => `• ${f.title}: ${f.why}`).join('\n')
+    if (failed.length) toast.error(`Published ${ok} of ${todo.length}. Not published:\n${lines}`, { duration: Infinity, closeButton: true })
+    else toast.success(`Published ${ok} of ${todo.length}`)
   }
 
   // ── library ops ──────────────────────────────────────────
