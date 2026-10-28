@@ -302,7 +302,10 @@ export async function publishCourse(
     if (inl.inlined.length) warnings.push(`"${course.title}": inlined ${inl.inlined.length} external script(s) so it keeps working`)
     if (clean.removed.length)
       warnings.push(`"${course.title}": could not inline, so REMOVED: ${clean.removed.join(', ').slice(0, 200)} — check this page`)
-    const html = prefixStorage(clean.html, id)
+    // anything after the final </html> (stray model text) would fail hexpo's end-of-file check
+    const tail = clean.html.search(/<\/html>(?![\s\S]*<\/html>)/i)
+    const trimmed = tail >= 0 ? clean.html.slice(0, tail + 7) + '\n' : clean.html
+    const html = prefixStorage(trimmed, id)
     const problems = validateForHexpo(html, id)
     if (problems.length)
       throw new Error(`Won't publish — hexpo's checks fail:\n• ${problems.join('\n• ')}`)
