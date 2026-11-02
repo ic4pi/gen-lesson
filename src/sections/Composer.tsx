@@ -31,9 +31,6 @@ interface Props {
   designerModels: ModelOption[]
   buildMode: 'single' | 'two-stage'
   setBuildMode: (v: 'single' | 'two-stage') => void
-  refId: string
-  setRefId: (v: string) => void
-  refOptions: { id: string; label: string }[]
   fxOn: boolean
   setFxOn: (v: boolean) => void
   designerId: string
@@ -179,25 +176,9 @@ export default function Composer(p: Props) {
         </Select>
         {p.buildMode === 'single' && (
           <>
-            <Label className="label-mono">Style reference</Label>
-            <Select value={p.refId} onValueChange={p.setRefId} disabled={busy}>
-              <SelectTrigger className={inputCls}>
-                <SelectValue placeholder="Choose a reference page" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">
-                  <span className="text-foreground">None</span>
-                </SelectItem>
-                {p.refOptions.map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    <span className="text-foreground">{r.label}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <p className="text-xs leading-relaxed text-muted-foreground">
-              The writer gets this page's CSS and scripts and is told to reach the same craft with a
-              new palette and new custom instruments for the topic.
+              Each course is styled from its own topic: its own palette, fonts, motifs and custom
+              instruments. No premade course is used as a template.
             </p>
           </>
         )}

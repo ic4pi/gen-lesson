@@ -16,7 +16,6 @@ import { enhanceCourseHtml, hasFx, stripFx } from '@/lib/fx'
 import { designCourse } from '@/lib/design'
 import { makeBrief } from '@/lib/brief'
 import { runQA } from '@/lib/qa'
-import { loadReference, REFERENCE_OPTIONS } from '@/lib/references'
 import {
   CURRICULUM_SYSTEM,
   rebuildPrompt,
@@ -54,7 +53,6 @@ const LS_MOTION = 'mf.motion'
 const LS_MODEL = 'mf.model'
 const LS_DESIGNER = 'mf.designer'
 const LS_BUILDMODE = 'mf.buildMode'
-const LS_REF = 'mf.ref'
 const LS_FX = 'mf.fx'
 const LS_CUSTOM = 'mf.customModels'
 const LS_SUBJECT = 'mf.subject'
@@ -173,10 +171,8 @@ export default function Home() {
   const [buildMode, setBuildMode] = useState<'single' | 'two-stage'>(
     () => (localStorage.getItem(LS_BUILDMODE) as 'single' | 'two-stage') || 'single',
   )
-  const [refId, setRefId] = useState(() => localStorage.getItem(LS_REF) ?? REFERENCE_OPTIONS[0]?.id ?? 'none')
   const [fxOn, setFxOn] = useState(() => localStorage.getItem(LS_FX) === 'on')
   useEffect(() => localStorage.setItem(LS_BUILDMODE, buildMode), [buildMode])
-  useEffect(() => localStorage.setItem(LS_REF, refId), [refId])
   useEffect(() => localStorage.setItem(LS_FX, fxOn ? 'on' : 'off'), [fxOn])
   // Library "View": show that course even while a build is running, and bring the preview into sight
   const [viewPinned, setViewPinned] = useState(false)
@@ -190,8 +186,6 @@ export default function Home() {
   const plannedSeriesId = useRef<string | null>(null)
   const buildModeRef = useRef(buildMode)
   buildModeRef.current = buildMode
-  const refIdRef = useRef(refId)
-  refIdRef.current = refId
   const fxRef = useRef(fxOn)
   fxRef.current = fxOn
   const modelRef = useRef(modelId)
@@ -468,10 +462,8 @@ export default function Home() {
       }
       setGen((g) => ({ ...g, phase: 'writing', message: '' }))
 
-      const referenceText = buildModeRef.current === 'single' ? await loadReference(refIdRef.current) : null
-
       // ── write the course (shrinks the request automatically if the provider rejects it) ──
-      const buildPrompt = (withRef: boolean) =>
+      const buildPrompt = (_withRef: boolean) =>
         coursePrompt({
           topic: effTopic,
           notes: briefText ? `${effNotes}\n\nBUILD REQUIREMENTS FROM THE CREATIVE DIRECTOR (treat as mandatory):\n${briefText}` : effNotes,
@@ -480,7 +472,7 @@ export default function Home() {
           previousParts,
           visual,
           mode: buildModeRef.current,
-          reference: withRef ? referenceText : null,
+          reference: null, // no premade page is ever sent: each course is styled from its own topic
           fx: fxRef.current,
         })
       const cap = model.maxOut ?? 32000
@@ -1314,9 +1306,6 @@ export default function Home() {
               designerModels={designerModels}
               buildMode={buildMode}
               setBuildMode={setBuildMode}
-              refId={refId}
-              setRefId={setRefId}
-              refOptions={REFERENCE_OPTIONS}
               fxOn={fxOn}
               setFxOn={setFxOn}
               designerId={designerId}
