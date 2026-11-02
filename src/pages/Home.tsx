@@ -1138,7 +1138,14 @@ export default function Home() {
   }
 
   async function publishAllUnpublished() {
-    const todo = coursesRef.current.filter((c) => !c.published)
+    // also re-push courses we marked published whose registry entry is missing on hexpo (lost by an earlier stale write)
+    let inRegistry: Set<string> | null = null
+    try {
+      inRegistry = new Set((await loadHexpo(publish)).reg.topics.map((t: any) => t.id))
+    } catch {
+      /* the publish below reports the real error */
+    }
+    const todo = coursesRef.current.filter((c) => !c.published || (inRegistry && !inRegistry.has(c.published.id)))
     if (!todo.length) return toast('Nothing to publish — everything is already in hexpo')
     const failed: { title: string; why: string }[] = []
     let ok = 0
