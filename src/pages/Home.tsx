@@ -1149,18 +1149,35 @@ export default function Home() {
     if (!todo.length) return toast('Nothing to publish — everything is already in hexpo')
     const failed: { title: string; why: string }[] = []
     let ok = 0
-    for (const [n, c] of todo.entries()) {
+    let wake: any = null
+    try {
+      wake = await (navigator as any).wakeLock?.request('screen') // a sleeping screen pauses the run
+    } catch {
+      /* unavailable */
+    }
+    outer: for (const [n, c] of todo.entries()) {
       toast.message(`Publishing ${n + 1}/${todo.length}: ${c.title}`, { id: 'publish-all' })
-      try {
-        await publishCurrent(c)
-        ok++
-      } catch (e: any) {
-        await noteFailure(c, e)
-        failed.push({ title: c.title, why: String(e?.message ?? 'failed').split('\n').filter(Boolean).slice(0, 2).join(' ') })
-        // a bad token / repo / network problem hits every course the same way: stop instead of repeating it
-        if (/GitHub rejected the token|GitHub 404|Could not reach api\.github\.com/.test(String(e?.message))) break
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await publishCurrent(c)
+          ok++
+          break
+        } catch (e: any) {
+          const msg = String(e?.message ?? 'failed')
+          // hexpo's own checks fail the same way every time; a dropped connection or a busy registry may not
+          if (attempt < 3 && !/Won't publish|rejected the token|GitHub 404/.test(msg)) {
+            await sleep(3000 * attempt, () => false)
+            continue
+          }
+          await noteFailure(c, e)
+          failed.push({ title: c.title, why: msg.split('\n').filter(Boolean).slice(0, 2).join(' ') })
+          // a bad token or repo hits every course the same way: stop instead of repeating it
+          if (/rejected the token|GitHub 404/.test(msg)) break outer
+          break
+        }
       }
     }
+    wake?.release?.().catch(() => {})
     toast.dismiss('publish-all')
     const lines = failed.map((f) => `• ${f.title}: ${f.why}`).join('\n')
     if (failed.length) toast.error(`Published ${ok} of ${todo.length}. Not published:\n${lines}`, { duration: Infinity, closeButton: true })
