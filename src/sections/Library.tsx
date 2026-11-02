@@ -16,6 +16,7 @@ interface Props {
   onDeleteSeries: (id: string) => void
   onExport: () => void
   onImport: (file: File) => void
+  onRestore: () => void
 }
 
 export default function Library(p: Props) {
@@ -34,6 +35,9 @@ export default function Library(p: Props) {
           </Button>
           <Button variant="outline" size="sm" onClick={p.onExport}>
             <Archive className="mr-1.5 h-3.5 w-3.5" /> Export backup
+          </Button>
+          <Button variant="outline" size="sm" onClick={p.onRestore} title="Pull the courses already published on hexpo back into this Library">
+            <Download className="mr-1.5 h-3.5 w-3.5" /> Restore from hexpo
           </Button>
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
             <Upload className="mr-1.5 h-3.5 w-3.5" /> Import
