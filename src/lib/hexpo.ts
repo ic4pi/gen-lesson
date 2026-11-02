@@ -80,6 +80,9 @@ async function readText(cfg: PublishConfig, file: string, ref: string = cfg.bran
   return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)))
 }
 
+/** Fetch one published file from the hexpo masterclasses folder. */
+export const readHexpoFile = (cfg: PublishConfig, file: string) => readText(cfg, `${cfg.dir}/${file}`)
+
 /** `ref` may be a commit sha: reading by sha is exact, whereas a branch name can briefly return the previous registry. */
 export async function loadHexpo(cfg: PublishConfig, ref?: string): Promise<{ tax: Taxonomy; reg: Registry }> {
   if (!cfg.token.trim()) throw new Error('Add a GitHub token in Settings → Publish first.')

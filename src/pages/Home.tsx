@@ -31,7 +31,7 @@ import {
   parseCurriculum,
 } from '@/lib/prompts'
 import { db, uid } from '@/lib/db'
-import { DEFAULT_PUBLISH, loadHexpo, publishCourse } from '@/lib/hexpo'
+import { DEFAULT_PUBLISH, loadHexpo, publishCourse, readHexpoFile } from '@/lib/hexpo'
 import { buildReviewerChain, hasReviewerKey, reviewWithFallback } from '@/lib/review'
 import { closeTruncated, isBroken, repairTruncated } from '@/lib/repair'
 import type {
@@ -154,6 +154,10 @@ export default function Home() {
     loadJson<any[]>(LS_QUEUE, []).map((q) => ({ mode: 'standalone', status: 'pending', ...q })) as QueueItem[],
   )
   const [libraryLoaded, setLibraryLoaded] = useState(false)
+  // ask the browser not to evict the library (IndexedDB) when it is short on space
+  useEffect(() => {
+    void navigator.storage?.persist?.()
+  }, [])
   const [suggesting, setSuggesting] = useState(false)
   const [queueRunning, setQueueRunning] = useState(false)
   const queueStopRef = useRef(false)
@@ -1206,6 +1210,47 @@ export default function Home() {
     setTimeout(() => URL.revokeObjectURL(url), 5000)
   }
 
+  /** Rebuild Library entries from the pages already published on hexpo (recovers a lost browser library). */
+  async function restoreFromHexpo() {
+    try {
+      const { reg } = await loadHexpo(publish)
+      const have = new Set(coursesRef.current.map((c) => c.published?.id).filter(Boolean))
+      const entries = reg.topics.filter((t: any) => t.source === 'masterclass-foundry' && !have.has(t.id))
+      if (!entries.length) return void toast('Nothing to restore: every Foundry course on hexpo is already in your Library')
+      let n = 0
+      for (const t of entries) {
+        toast.message(`Restoring ${n + 1}/${entries.length}: ${t.title}`, { id: 'restore' })
+        const html = await readHexpoFile(publish, t.file)
+        const course: Course = {
+          id: uid(),
+          seriesId: null,
+          part: null,
+          title: t.title,
+          topic: t.title,
+          notes: '',
+          modelId: t.model ?? 'unknown',
+          provider: 'openrouter',
+          html,
+          summary: t.blurb ?? '',
+          topicsCovered: Array.isArray(t.covers) ? t.covers : [],
+          createdAt: Date.parse(t.publishedAt ?? '') || Date.now(),
+          meta: t.number
+            ? { number: t.number, filename: t.file, cls: t.decimalClass ?? '', division: t.decimalDivision ?? '', kind: t.decimalKind ?? '', wave: t.wave }
+            : undefined,
+          published: { id: t.id, file: t.file, at: Date.parse(t.publishedAt ?? '') || Date.now(), commit: '' },
+        }
+        await db.putCourse(course)
+        n++
+      }
+      setCourses(await db.allCourses())
+      toast.dismiss('restore')
+      toast.success(`Restored ${n} course${n === 1 ? '' : 's'} from hexpo`)
+    } catch (e: any) {
+      toast.dismiss('restore')
+      toast.error(e?.message ?? 'Restore failed', { duration: 9000 })
+    }
+  }
+
   async function importBackup(file: File) {
     try {
       const j = JSON.parse(await file.text())
@@ -1370,6 +1415,7 @@ export default function Home() {
           onDeleteSeries={deleteSeries}
           onExport={exportBackup}
           onImport={importBackup}
+          onRestore={restoreFromHexpo}
         />
 
         <footer className="mt-16 border-t border-border pt-6">
