@@ -68,8 +68,8 @@ async function gh(cfg: PublishConfig, path: string, init?: RequestInit) {
   return res.json()
 }
 
-async function readText(cfg: PublishConfig, file: string): Promise<string> {
-  const j = await gh(cfg, `/contents/${file}?ref=${encodeURIComponent(cfg.branch)}`)
+async function readText(cfg: PublishConfig, file: string, ref: string = cfg.branch): Promise<string> {
+  const j = await gh(cfg, `/contents/${file}?ref=${encodeURIComponent(ref)}`)
   if (j.content) {
     const bin = atob(j.content.replace(/\n/g, ''))
     return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)))
@@ -80,11 +80,12 @@ async function readText(cfg: PublishConfig, file: string): Promise<string> {
   return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)))
 }
 
-export async function loadHexpo(cfg: PublishConfig): Promise<{ tax: Taxonomy; reg: Registry }> {
+/** `ref` may be a commit sha: reading by sha is exact, whereas a branch name can briefly return the previous registry. */
+export async function loadHexpo(cfg: PublishConfig, ref?: string): Promise<{ tax: Taxonomy; reg: Registry }> {
   if (!cfg.token.trim()) throw new Error('Add a GitHub token in Settings → Publish first.')
   const [tax, reg] = await Promise.all([
-    readText(cfg, `${cfg.dir}/taxonomy.json`).then(JSON.parse),
-    readText(cfg, `${cfg.dir}/topics.json`).then(JSON.parse),
+    readText(cfg, `${cfg.dir}/taxonomy.json`, ref).then(JSON.parse),
+    readText(cfg, `${cfg.dir}/topics.json`, ref).then(JSON.parse),
   ])
   return { tax, reg }
 }
@@ -271,7 +272,10 @@ export async function publishCourse(
   const warnings: string[] = []
   for (let attempt = 1; attempt <= 3; attempt++) {
     onStatus(attempt === 1 ? 'Reading hexpo registry…' : `Registry moved — retrying (${attempt}/3)…`)
-    const { tax, reg } = await loadHexpo(cfg)
+    // Pin to the current head commit: the registry we edit must be the one in the commit we build on,
+    // otherwise a stale read silently drops the previous publish's entry.
+    const head = await gh(cfg, `/git/ref/heads/${encodeURIComponent(cfg.branch)}`)
+    const { tax, reg } = await loadHexpo(cfg, head.object.sha)
 
     // stable id: reuse ours on re-publish; otherwise a unique slug
     const prior = course.published
@@ -342,8 +346,7 @@ export async function publishCourse(
     }
 
     onStatus('Committing to ' + cfg.branch + '…')
-    const ref = await gh(cfg, `/git/ref/heads/${encodeURIComponent(cfg.branch)}`)
-    const parentSha: string = ref.object.sha
+    const parentSha: string = head.object.sha
     const parent = await gh(cfg, `/git/commits/${parentSha}`)
     const [blobHtml, blobReg] = await Promise.all([
       gh(cfg, '/git/blobs', { method: 'POST', body: JSON.stringify({ content: html, encoding: 'utf-8' }) }),
