@@ -2,6 +2,8 @@
 import type { Course, Series } from '@/types'
 
 const DB_NAME = 'masterclass-foundry'
+// RULE: never delete or rename these stores/keys, and never lower DB_VERSION. A change needs a migration in
+// onupgradeneeded that copies existing data, and the UI must warn and offer a backup before any destructive step.
 const DB_VERSION = 1
 
 function open(): Promise<IDBDatabase> {

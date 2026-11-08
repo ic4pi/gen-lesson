@@ -154,6 +154,19 @@ export default function Home() {
     loadJson<any[]>(LS_QUEUE, []).map((q) => ({ mode: 'standalone', status: 'pending', ...q })) as QueueItem[],
   )
   const [libraryLoaded, setLibraryLoaded] = useState(false)
+  // ── storage guard: courses live only in this browser, so keep them from being evicted and nag for off-site backups
+  const [persisted, setPersisted] = useState<boolean | null>(null)
+  const [backup, setBackup] = useState<{ at: number; n: number } | null>(() => loadJson<{ at: number; n: number } | null>('mf.backup', null))
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const sm = navigator.storage
+        setPersisted(sm?.persisted ? (await sm.persisted()) || (sm.persist ? await sm.persist() : false) : false)
+      } catch {
+        setPersisted(false)
+      }
+    })()
+  }, [])
   const [suggesting, setSuggesting] = useState(false)
   const [queueRunning, setQueueRunning] = useState(false)
   const queueStopRef = useRef(false)
@@ -1197,11 +1210,14 @@ export default function Home() {
 
   async function exportBackup() {
     const payload = JSON.stringify({ version: 1, series: seriesList, courses }, null, 2)
+    const mark = { at: Date.now(), n: courses.length }
+    localStorage.setItem('mf.backup', JSON.stringify(mark))
+    setBackup(mark)
     const blob = new Blob([payload], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `masterclass-foundry-backup-${new Date().toISOString().slice(0, 10)}.json`
+    a.download = `masterclass-foundry-backup-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.json`
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 5000)
   }
@@ -1220,6 +1236,16 @@ export default function Home() {
       toast.error('That file is not a valid Foundry backup')
     }
   }
+
+  // remember how many courses we have ever held so a wipe is noticed instead of silent
+  useEffect(() => {
+    if (!libraryLoaded) return
+    const known = Number(localStorage.getItem('mf.known') ?? 0)
+    if (courses.length > known) localStorage.setItem('mf.known', String(courses.length))
+  }, [courses.length, libraryLoaded])
+  const knownEver = Number(localStorage.getItem('mf.known') ?? 0)
+  const wiped = libraryLoaded && courses.length === 0 && knownEver > 0
+  const unbacked = courses.length > 0 && (!backup || courses.length > backup.n || Date.now() - backup.at > 24 * 3600_000)
 
   const busy = queueRunning || gen.phase === 'planning' || gen.phase === 'writing' || gen.phase === 'assembling' || gen.phase === 'designing'
 
@@ -1357,6 +1383,33 @@ export default function Home() {
           onRerun={rerunItem}
           onClearDone={clearDone}
         />
+
+        {libraryLoaded && (wiped || unbacked || persisted === false) && (
+          <div
+            role="alert"
+            className={`mb-4 rounded-md border px-4 py-3 text-xs leading-relaxed ${wiped ? 'border-destructive bg-destructive/10' : 'border-primary/50 bg-primary/5'}`}
+          >
+            {wiped ? (
+              <p>
+                Your library is empty, but this browser used to hold {knownEver} course{knownEver === 1 ? '' : 's'}. The browser (or a manual
+                clear) removed the site data. Use <b>Import</b> to restore your last backup file. If this site is open at a different
+                address than before, go back to the original address: each address keeps its own library.
+              </p>
+            ) : (
+              <p>
+                {unbacked ? (
+                  <>
+                    <b>{courses.length} course{courses.length === 1 ? '' : 's'} exist only in this browser</b>
+                    {backup ? ` (last backup ${new Date(backup.at).toLocaleString()}, ${backup.n} courses)` : ' and have never been backed up'}.{' '}
+                    <button className="underline" onClick={exportBackup}>Download a backup now</button>
+                    {persisted === false ? '. ' : '.'}
+                  </>
+                ) : null}
+                {persisted === false ? ' This browser has not agreed to keep the data, so it may delete it when space is low or after a week unused.' : ''}
+              </p>
+            )}
+          </div>
+        )}
 
         <Library
           courses={courses}
